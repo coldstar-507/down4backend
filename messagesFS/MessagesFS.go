@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
+	"cloud.google.com/go/firestore"
 	"cloud.google.com/go/storage"
 	firebase "firebase.google.com/go/v4"
-	"firebase.google.com/go/v4/db"
 	"firebase.google.com/go/v4/messaging"
 	"github.com/libsv/go-bk/base58"
 )
@@ -36,9 +36,15 @@ type Down4Media struct {
 }
 
 type MessageServer struct {
-	RTDB    *db.Client
+	FS      *firestore.Client
 	MSGBCKT *storage.BucketHandle
 	MSGR    *messaging.Client
+}
+
+type UserInfo struct {
+	Secret   string `json:"secret"`
+	Activity int64  `json:"activity"`
+	Token    string `json:"token"`
 }
 
 var ms MessageServer
@@ -61,9 +67,9 @@ func init() {
 		log.Fatalf("error initializing messager: %v\n", err)
 	}
 
-	rtdb, err := app.Database(ctx)
+	fs, err := firestore.NewClient(ctx, "down4-26ee1")
 	if err != nil {
-		log.Fatalf("error initializing db: %v\n", err)
+		log.Fatalf("error initializing firestore: %v\n", err)
 	}
 
 	stor, err := storage.NewClient(ctx)
@@ -74,7 +80,7 @@ func init() {
 	msgbckt := stor.Bucket("down4-26ee1-messages")
 
 	ms = MessageServer{
-		RTDB:    rtdb,
+		FS:      fs,
 		MSGBCKT: msgbckt,
 		MSGR:    msgr,
 	}
@@ -180,13 +186,17 @@ func getMessagingTokens(ctx context.Context, ids []string, ch chan *string, ech 
 	for _, id := range ids {
 		id_ := id
 		go func() {
-			userTokenRef := ms.RTDB.NewRef("/Users/" + id_ + "/tkn/")
-			var token string
-			if err := userTokenRef.Get(ctx, &token); err != nil {
+			var userInfo UserInfo
+			userRef := ms.FS.Collection("Users").Doc(id_)
+			snap, err := userRef.Get(ctx)
+			if err != nil {
 				ech <- &err
-			} else {
-				ch <- &token
 			}
+			if err = snap.DataTo(&userInfo); err != nil {
+				ech <- &err
+			}
+			token := userInfo.Token
+			ch <- &token
 		}()
 	}
 }
