@@ -3,7 +3,9 @@ package messages
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -26,7 +28,8 @@ type MessageRequest struct {
 	Reactions []string `json:"r"`
 	Nodes     []string `json:"n"`
 	IsChat    bool     `json:"ch"`
-	Media     []byte   `json:"m"`
+	Media     string   `json:"m"`
+	IsVideo   bool     `json:"vid"`
 }
 
 type Down4Media struct {
@@ -94,6 +97,7 @@ func (m *MessageRequest) ToNotification(messageID, mediaID string) map[string]st
 	mp["r"] = strings.Join((*m).Reactions, " ")
 	mp["n"] = strings.Join((*m).Nodes, " ")
 	mp["ch"] = strconv.FormatBool((*m).IsChat)
+	mp["vid"] = strconv.FormatBool((*m).IsVideo)
 	mp["m"] = mediaID
 
 	return mp
@@ -107,11 +111,16 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&msgReq)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error decoding body message request: %v\n", err)
+		log.Fatalf("error decoding body in message request: %v\n", err)
+	}
+	mediaData, err := base64.StdEncoding.DecodeString(msgReq.Media)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error decoding base64 media in message request: %v\n", err)
 	}
 
 	h, bSender, bText := sha1.New(), []byte(msgReq.Sender), []byte(msgReq.Text)
-	hashingData := append(bSender, append(bText, msgReq.Media...)...)
+	hashingData := append(bSender, append(bText, mediaData...)...)
 	if _, err = h.Write(hashingData); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error hashing message data to create message ID: %v\n", err)
@@ -135,13 +144,12 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 
 	var mediaID string
 	if len(msgReq.Media) != 0 {
-		h2 := sha1.New()
-		if _, err = h2.Write(append([]byte(msgReq.Sender), msgReq.Media...)); err != nil {
+		mediaID, err = generateB58MediaID(mediaData, msgReq.Sender)
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error hashing and ID for message media: %v\n", err)
+			log.Fatalf("error generating b58 media id in HandleMessageRequest: %v\n", err)
 		}
-		mediaID = string(h2.Sum(nil))
-		err = uploadMessageMedia(ctx, Down4Media{Identifier: mediaID, Data: msgReq.Media})
+		err = uploadMessageMedia(ctx, Down4Media{Identifier: mediaID, Data: mediaData})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error uploading media in message request: %v\n", err)
@@ -160,6 +168,39 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func GetMessageMedia(w http.ResponseWriter, r *http.Request) {
+
+	ctx := context.Background()
+
+	byteID, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error reading body of request in GetMessageMedia: %v\n", err)
+	}
+
+	messageID := string(byteID)
+
+	rd, err := ms.MSGBCKT.Object(messageID).NewReader(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error creating reading for bucket in GetMessageMedia: %v\n", err)
+	}
+
+	mediaData, err := io.ReadAll(rd)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error reading media data from reader in GetMessageMedia: %v\n", err)
+	}
+
+	if _, err = w.Write(mediaData); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing media data on response in GetMessageMedia: %v\n", err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+
 }
 
 func getMessagingTokens(ctx context.Context, ids []string, ch chan *string, ech chan *error) {
@@ -187,4 +228,14 @@ func uploadMessageMedia(ctx context.Context, media Down4Media) error {
 		return err
 	}
 	return nil
+}
+
+func generateB58MediaID(media []byte, uid string) (string, error) {
+	h := sha1.New()
+	data := append([]byte(uid), media...)
+	if _, err := h.Write(data); err != nil {
+		return "", nil
+	}
+	hash := h.Sum(nil)
+	return base58.Encode(hash), nil
 }
