@@ -3,17 +3,15 @@ package messages
 import (
 	"context"
 	"crypto/sha1"
-	"encoding/base64"
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"cloud.google.com/go/firestore"
 	"cloud.google.com/go/storage"
 	firebase "firebase.google.com/go/v4"
-	"firebase.google.com/go/v4/db"
 	"firebase.google.com/go/v4/messaging"
 	"github.com/libsv/go-bk/base58"
 )
@@ -28,8 +26,8 @@ type MessageRequest struct {
 	Reactions []string `json:"r"`
 	Nodes     []string `json:"n"`
 	IsChat    bool     `json:"ch"`
-	Media     string   `json:"m"`
 	IsVideo   bool     `json:"vid"`
+	Media     []byte   `json:"m"`
 }
 
 type Down4Media struct {
@@ -38,9 +36,15 @@ type Down4Media struct {
 }
 
 type MessageServer struct {
-	RTDB    *db.Client
+	FS      *firestore.Client
 	MSGBCKT *storage.BucketHandle
 	MSGR    *messaging.Client
+}
+
+type UserInfo struct {
+	Secret   string `json:"secret"`
+	Activity int64  `json:"activity"`
+	Token    string `json:"token"`
 }
 
 var ms MessageServer
@@ -63,9 +67,9 @@ func init() {
 		log.Fatalf("error initializing messager: %v\n", err)
 	}
 
-	rtdb, err := app.Database(ctx)
+	fs, err := firestore.NewClient(ctx, "down4-26ee1")
 	if err != nil {
-		log.Fatalf("error initializing db: %v\n", err)
+		log.Fatalf("error initializing firestore: %v\n", err)
 	}
 
 	stor, err := storage.NewClient(ctx)
@@ -76,7 +80,7 @@ func init() {
 	msgbckt := stor.Bucket("down4-26ee1-messages")
 
 	ms = MessageServer{
-		RTDB:    rtdb,
+		FS:      fs,
 		MSGBCKT: msgbckt,
 		MSGR:    msgr,
 	}
@@ -104,7 +108,6 @@ func (m *MessageRequest) ToNotification(messageID, mediaID string) (map[string]s
 	mp["r"] = strings.Join((*m).Reactions, " ")
 	mp["n"] = strings.Join((*m).Nodes, " ")
 	mp["ch"] = strconv.FormatBool((*m).IsChat)
-	mp["vid"] = strconv.FormatBool((*m).IsVideo)
 	mp["m"] = mediaID
 	mp["url"] = url
 
@@ -119,16 +122,11 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&msgReq)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error decoding body in message request: %v\n", err)
-	}
-	mediaData, err := base64.StdEncoding.DecodeString(msgReq.Media)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error decoding base64 media in message request: %v\n", err)
+		log.Fatalf("error decoding body message request: %v\n", err)
 	}
 
 	h, bSender, bText := sha1.New(), []byte(msgReq.Sender), []byte(msgReq.Text)
-	hashingData := append(bSender, append(bText, mediaData...)...)
+	hashingData := append(bSender, append(bText, msgReq.Media...)...)
 	if _, err = h.Write(hashingData); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error hashing message data to create message ID: %v\n", err)
@@ -152,12 +150,13 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 
 	var mediaID string
 	if len(msgReq.Media) != 0 {
-		mediaID, err = generateB58MediaID(mediaData, msgReq.Sender)
-		if err != nil {
+		h2 := sha1.New()
+		if _, err = h2.Write(append([]byte(msgReq.Sender), msgReq.Media...)); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error generating b58 media id in HandleMessageRequest: %v\n", err)
+			log.Fatalf("error hashing and ID for message media: %v\n", err)
 		}
-		err = uploadMessageMedia(ctx, Down4Media{Identifier: mediaID, Data: mediaData})
+		mediaID = string(h2.Sum(nil))
+		err = uploadMessageMedia(ctx, Down4Media{Identifier: mediaID, Data: msgReq.Media})
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error uploading media in message request: %v\n", err)
@@ -183,50 +182,21 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func GetMessageMedia(w http.ResponseWriter, r *http.Request) {
-
-	ctx := context.Background()
-
-	byteID, err := io.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error reading body of request in GetMessageMedia: %v\n", err)
-	}
-
-	messageID := string(byteID)
-
-	rd, err := ms.MSGBCKT.Object(messageID).NewReader(ctx)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error creating reading for bucket in GetMessageMedia: %v\n", err)
-	}
-
-	mediaData, err := io.ReadAll(rd)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error reading media data from reader in GetMessageMedia: %v\n", err)
-	}
-
-	if _, err = w.Write(mediaData); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error writing media data on response in GetMessageMedia: %v\n", err)
-	}
-
-	w.WriteHeader(http.StatusOK)
-
-}
-
 func getMessagingTokens(ctx context.Context, ids []string, ch chan *string, ech chan *error) {
 	for _, id := range ids {
 		id_ := id
 		go func() {
-			userTokenRef := ms.RTDB.NewRef("/Users/" + id_ + "/tkn/")
-			var token string
-			if err := userTokenRef.Get(ctx, &token); err != nil {
+			var userInfo UserInfo
+			userRef := ms.FS.Collection("Users").Doc(id_)
+			snap, err := userRef.Get(ctx)
+			if err != nil {
 				ech <- &err
-			} else {
-				ch <- &token
 			}
+			if err = snap.DataTo(&userInfo); err != nil {
+				ech <- &err
+			}
+			token := userInfo.Token
+			ch <- &token
 		}()
 	}
 }
@@ -241,14 +211,4 @@ func uploadMessageMedia(ctx context.Context, media Down4Media) error {
 		return err
 	}
 	return nil
-}
-
-func generateB58MediaID(media []byte, uid string) (string, error) {
-	h := sha1.New()
-	data := append([]byte(uid), media...)
-	if _, err := h.Write(data); err != nil {
-		return "", nil
-	}
-	hash := h.Sum(nil)
-	return base58.Encode(hash), nil
 }
