@@ -13,21 +13,6 @@ import (
 	"github.com/libsv/go-bk/chaincfg"
 )
 
-type Transaction struct {
-	Targets  []string `json:"targets"`
-	Satoshis int      `json:"sats"`
-	From     string   `json:"from"`
-	Each     bool     `json:"each"`
-	Low      int      `json:"low"`
-	High     int      `json:"high"`
-}
-
-type PublicMoneyInfo struct {
-	NeuterString string `json:"nt"`
-	Change       uint32 `json:"cg"`
-	Index        uint32 `json:"ix"`
-}
-
 type TransactionServer struct {
 	RTDB *db.Client
 	MSGR *messaging.Client
@@ -132,7 +117,7 @@ func getNewAdress(ctx context.Context, username string, ach chan *string, ech ch
 			log.Printf("error unmarshalling public money info in GetNewAdresse: %v\n", err)
 			return nil, err
 		}
-		neuter, err := bip32.NewKeyFromString(pmi.NeuterString)
+		neuter, err := bip32.NewKeyFromString(pmi.Neuter)
 		if err != nil {
 			log.Printf("error making key from string in GetNewAdresse: %v\n", err)
 			return nil, err
@@ -149,7 +134,7 @@ func getNewAdress(ctx context.Context, username string, ach chan *string, ech ch
 		return pmi, nil
 	}
 
-	if err := ts.RTDB.NewRef("/Money/"+username).Transaction(ctx, getNewAdresse_); err != nil {
+	if err := ts.RTDB.NewRef(username+"/mny").Transaction(ctx, getNewAdresse_); err != nil {
 		log.Printf("error getting new adress for user %s: %v\n", username, err)
 		ech <- &err
 	}
@@ -164,7 +149,7 @@ func getNewChangeAdress(ctx context.Context, username string, ach chan *string, 
 			log.Printf("error unmarshalling public money info in GetChangeAdress: %v\n", err)
 			return nil, err
 		}
-		neuter, err := bip32.NewKeyFromString(pmi.NeuterString)
+		neuter, err := bip32.NewKeyFromString(pmi.Neuter)
 		if err != nil {
 			log.Printf("error loading neuter from string in GetChangeAdress: %v\n", err)
 			return nil, err
@@ -181,7 +166,7 @@ func getNewChangeAdress(ctx context.Context, username string, ach chan *string, 
 		return pmi, nil
 	}
 
-	if err := ts.RTDB.NewRef("/Money/"+username).Transaction(ctx, getNewChangeAdresse_); err != nil {
+	if err := ts.RTDB.NewRef(username+"/mny").Transaction(ctx, getNewChangeAdresse_); err != nil {
 		ech <- &err
 		log.Printf("error getting change adress for user %s: %v\n", username, err)
 	}

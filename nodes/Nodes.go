@@ -8,44 +8,12 @@ import (
 	"net/http"
 	"strings"
 
+	"cloud.google.com/go/firestore"
 	"cloud.google.com/go/storage"
-	firebase "firebase.google.com/go/v4"
-	"firebase.google.com/go/v4/db"
 )
 
-type Down4Media struct {
-	Identifier string `json:"id"`
-	Data       []byte `json:"d"`
-}
-
-type RealTimeNode struct {
-	Identifier string            `json:"id"`
-	Type       string            `json:"t"`
-	Name       string            `json:"nm"`
-	Lastname   string            `json:"ln"`
-	ImageID    string            `json:"im"`
-	Token      string            `json:"tkn"`
-	Friends    map[string]string `json:"frd"`
-	Messages   map[string]string `json:"msg"`
-	Admins     map[string]string `json:"adm"`
-	Childs     map[string]string `json:"chl"`
-	Parents    map[string]string `json:"prt"`
-}
-
-type FullNode struct {
-	Identifier string     `json:"id"`
-	Type       string     `json:"t"`
-	Name       string     `json:"nm"`
-	Lastname   string     `json:"ln"`
-	Image      Down4Media `json:"im"`
-	Messages   []string   `json:"msg"`
-	Admins     []string   `json:"adm"`
-	Childs     []string   `json:"chl"`
-	Parents    []string   `json:"prt"`
-}
-
 type NodeServer struct {
-	RTDB   *db.Client
+	FS     *firestore.Client
 	NDBCKT *storage.BucketHandle
 }
 
@@ -53,18 +21,9 @@ var ns NodeServer
 
 func init() {
 
-	config := &firebase.Config{
-		DatabaseURL: "https://down4-26ee1-default-rtdb.firebaseio.com/",
-	}
-
 	ctx := context.Background()
 
-	app, err := firebase.NewApp(ctx, config)
-	if err != nil {
-		log.Fatalf("error initializing app: %v\n", err)
-	}
-
-	rtdb, err := app.Database(ctx)
+	fs, err := firestore.NewClient(ctx, "down4-26ee1")
 	if err != nil {
 		log.Fatalf("error initializing db: %v\n", err)
 	}
@@ -77,7 +36,7 @@ func init() {
 	ndbcket := stor.Bucket("down4-26ee1-nodes")
 
 	ns = NodeServer{
-		RTDB:   rtdb,
+		FS:     fs,
 		NDBCKT: ndbcket,
 	}
 
@@ -97,7 +56,7 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 
 	// buffered is faster and espicially more consistent
 	errChan := make(chan *error, len(ids))
-	nodeChan := make(chan *FullNode, len(ids))
+	nodeChan := make(chan *OutputNode, len(ids))
 	go func() {
 		for _, id := range ids {
 			id_ := id
@@ -105,7 +64,7 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	nodes := make([]FullNode, 0)
+	nodes := make([]OutputNode, 0)
 	for range ids {
 		select {
 		case n := <-nodeChan:
@@ -129,57 +88,66 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func getNode(ctx context.Context, id string, nodeChan chan *FullNode, errChan chan *error) {
+func getNode(ctx context.Context, id string, nodeChan chan *OutputNode, errChan chan *error) {
 
-	var rtn RealTimeNode
-	if err := ns.RTDB.NewRef("/Nodes/"+id).Get(ctx, &rtn); err != nil {
+	var fsn FireStoreNode
+	snap, err := ns.FS.Collection("Nodes").Doc(id).Get(ctx)
+	if err != nil {
 		errChan <- &err
 		log.Printf("error getting node id: %s from collection 'Nodes': %v\n", id, err)
 		return
 	}
 
-	imData, err := getNodeMedia(ctx, rtn.ImageID)
+	if err := snap.DataTo(&fsn); err != nil {
+		errChan <- &err
+		log.Printf("error reading snapshot data into FireStoreNode for user: %s: %v\n", id, err)
+		return
+	}
+
+	d4media, err := getNodeMedia(ctx, fsn.ImageID)
 	if err != nil {
 		errChan <- &err
 		log.Printf("error reading image data from bucket reader: %v\n", err)
 		return
 	}
 
-	node := FullNode{
-		Identifier: rtn.Identifier,
-		Type:       rtn.Type,
-		Name:       rtn.Name,
-		Lastname:   rtn.Lastname,
-		Image:      Down4Media{Identifier: rtn.ImageID, Data: imData},
-		Messages:   mapToSliceString(rtn.Messages),
-		Admins:     mapToSliceString(rtn.Admins),
-		Childs:     mapToSliceString(rtn.Childs),
-		Parents:    mapToSliceString(rtn.Parents),
+	node := OutputNode{
+		Identifier: fsn.Identifier,
+		Type:       fsn.Type,
+		Name:       fsn.Name,
+		Lastname:   fsn.Lastname,
+		Image:      *d4media,
+		Messages:   fsn.Messages,
+		Admins:     fsn.Admins,
+		Childs:     fsn.Childs,
+		Parents:    fsn.Parents,
 	}
 
 	nodeChan <- &node
-
 }
 
-func getNodeMedia(ctx context.Context, id string) ([]byte, error) {
+func getNodeMedia(ctx context.Context, id string) (*Down4Media, error) {
 
-	rc, err := ns.NDBCKT.Object(id).NewReader(ctx)
+	obj := ns.NDBCKT.Object(id)
+	rdr, err := obj.NewReader(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	mediaData, err := io.ReadAll(rc)
+	mediaData, err := io.ReadAll(rdr)
 	if err != nil {
 		return nil, err
 	}
 
-	return mediaData, nil
-}
-
-func mapToSliceString(m map[string]string) []string {
-	s := make([]string, 0)
-	for _, v := range m {
-		s = append(s, v)
+	mediaAttrs, err := obj.Attrs(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return s
+
+	down4Media := Down4Media{
+		Identifier: id,
+		Data:       mediaData,
+		Metadata:   mediaAttrs.Metadata,
+	}
+	return &down4Media, nil
 }

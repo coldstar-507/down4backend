@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func (fn *FullNode) Printable() map[string]interface{} {
+func (fn *OutputNode) Printable() map[string]interface{} {
 	return map[string]interface{}{
 		"id":  fn.Identifier,
 		"t":   fn.Type,
@@ -24,7 +24,7 @@ func (fn *FullNode) Printable() map[string]interface{} {
 
 func TestGetNodesHTTP(t *testing.T) {
 
-	validNodes := []byte("basedlad biggoat goa guylaine helene helenejeff jeff josh thisismostlyfast")
+	validNodes := []byte("jeff")
 
 	req1 := httptest.NewRequest("POST", "/", bytes.NewReader(validNodes))
 
@@ -32,7 +32,7 @@ func TestGetNodesHTTP(t *testing.T) {
 
 	GetNodes(rr1, req1)
 
-	var r1 []FullNode
+	var r1 []OutputNode
 
 	json.NewDecoder(rr1.Body).Decode(&r1)
 
@@ -44,7 +44,7 @@ func TestGetNodesHTTP(t *testing.T) {
 
 func BenchmarkGetNodesHTTP(b *testing.B) {
 
-	validNodes := []byte("basedlad biggoat goa guylaine helene helenejeff jeff josh thisismostlyfast")
+	validNodes := []byte("jeff")
 
 	req1 := httptest.NewRequest("POST", "/", bytes.NewReader(validNodes))
 
@@ -52,7 +52,7 @@ func BenchmarkGetNodesHTTP(b *testing.B) {
 
 	GetNodes(rr1, req1)
 
-	var r1 []FullNode
+	var r1 []OutputNode
 
 	json.NewDecoder(rr1.Body).Decode(&r1)
 
