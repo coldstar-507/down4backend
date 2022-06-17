@@ -35,7 +35,7 @@ func TestMessageRequestHTTP(t *testing.T) {
 	req := httptest.NewRequest("POST", "/", bytes.NewReader(data))
 	rsp := httptest.NewRecorder()
 
-	HandlePingRequest(rsp, req)
+	HandleMessageRequest(rsp, req)
 
 	fmt.Printf("response status: %v\n", rsp.Code)
 }

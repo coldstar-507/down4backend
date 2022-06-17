@@ -1,4 +1,4 @@
-module down4.com/initializationFS
+module down4.com/initialization
 
 go 1.16
 
@@ -9,3 +9,4 @@ require (
 	github.com/libsv/go-bk v0.1.6
 	google.golang.org/grpc v1.45.0
 )
+	
