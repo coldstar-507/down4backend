@@ -17,6 +17,8 @@ type FireStoreNode struct {
 	Friends    []string `json:"frd"`
 	Messages   []string `json:"msg"`
 	Admins     []string `json:"adm"`
+	Posts      []string `json:"pst"`
+	Group      []string `json:"grp"`
 	Childs     []string `json:"chl"`
 	Parents    []string `json:"prt"`
 	Words      []string `json:"wrd"`
@@ -32,7 +34,9 @@ type OutputNode struct {
 	Longitude  float32    `json:"lng"`
 	Friends    []string   `json:"frd"`
 	Messages   []string   `json:"msg"`
+	Posts      []string   `json:"pst"`
 	Admins     []string   `json:"adm"`
+	Group      []string   `json:"grp"`
 	Childs     []string   `json:"chl"`
 	Parents    []string   `json:"prt"`
 	Words      []string   `json:"wrd"`

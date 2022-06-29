@@ -38,15 +38,15 @@ func TestUserInitializationHttp(t *testing.T) {
 
 	jeff := InitUserInfo{
 		Secret:     "fkldsajffdfdflsdkajf",
-		Name:       "Baleine",
-		Lastname:   "Big",
-		Identifier: "jig",
+		Name:       "Helene",
+		Lastname:   "Dufour",
+		Identifier: "helene",
 		Image: Down4Media{
-			Identifier: "wlallallala",
+			Identifier: "helenephoto",
 			Data:       im,
 			Metadata: map[string]string{
-				"o":   "big",
-				"ts":  "32910390",
+				"o":   "helene",
+				"ts":  "90409328",
 				"trv": "false",
 				"ptv": "false",
 				"shr": "true",

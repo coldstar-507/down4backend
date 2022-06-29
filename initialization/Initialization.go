@@ -121,7 +121,7 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 			Name:       info.Name,
 			Lastname:   info.Lastname,
 			ImageID:    info.Image.Identifier,
-			Type:       "usr",
+			Type:       "user",
 			Longitude:  0,
 			Latitude:   0,
 			Friends:    make([]string, 0),
@@ -212,7 +212,6 @@ func isValidUsername(ctx context.Context, username string) (bool, error) {
 	}
 
 	return !snap.Exists(), nil
-
 }
 
 func uploadNodeMedia(ctx context.Context, media Down4Media) error {
