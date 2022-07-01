@@ -28,6 +28,7 @@ var ms MessageServer
 
 func init() {
 
+	// opt := option.WithCredentialsFile("C:/Users/coton/Documents/project-down4/service-accounts/down4-26ee1-8433e5b5e7d2.json")
 	config := &firebase.Config{
 		DatabaseURL: "https://down4-26ee1-default-rtdb.firebaseio.com/",
 	}

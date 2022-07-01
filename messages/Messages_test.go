@@ -40,11 +40,11 @@ func TestChatWithMediaUpload(t *testing.T) {
 		WithUpload:  true,
 		IsGroup:     false,
 		IsHyperchat: false,
-		Targets:     []string{"biden"},
+		Targets:     []string{"bobo"},
 		Message: Down4Message{
-			MessageID:       "ffs",
-			Root:            "helene",
-			SenderID:        "chicken",
+			MessageID:       "fdslkj4l32kj",
+			Root:            "bobo",
+			SenderID:        "bobo",
 			SenderName:      "Chicken",
 			SenderLastName:  "BBQ",
 			SenderThumbnail: tn,
@@ -84,15 +84,15 @@ func TestChatWithoutMediaUpload(t *testing.T) {
 		WithUpload:  false,
 		IsGroup:     false,
 		IsHyperchat: false,
-		Targets:     []string{"biden"},
+		Targets:     []string{"bobo"},
 		Message: Down4Message{
-			MessageID:       "fkldjfallalskdjfkds",
+			MessageID:       "fdsfgdsf22323",
 			Root:            "traphouse",
-			SenderID:        "helene",
-			SenderName:      "Helene",
-			SenderLastName:  "Dufour",
+			SenderID:        "bobo",
+			SenderName:      "Bobo",
+			SenderLastName:  "The bear",
 			SenderThumbnail: tn,
-			Text:            "Good shit little nigglet",
+			Text:            "What's up dude!",
 			Timestamp:       time.Now().Unix(),
 			IsChat:          true,
 			Media:           d4mediaNoUpload,
@@ -112,7 +112,7 @@ func TestChatWithoutMediaUpload(t *testing.T) {
 	fmt.Printf("response status: %v\n", rsp.Code)
 }
 
-func TestGroupchatWithMedia(t *testing.T) {
+func TestGroupchatWithoutMedia(t *testing.T) {
 
 	im, err := os.ReadFile("C:/Users/coton/Desktop/hashirama.png")
 	if err != nil {
@@ -146,15 +146,96 @@ func TestGroupchatWithMedia(t *testing.T) {
 		WithUpload:  false,
 		IsGroup:     true,
 		IsHyperchat: false,
-		Targets:     []string{"biden"},
+		Targets:     []string{"bobo"},
 		GroupNode:   pseudoNode,
 		Message: Down4Message{
 			MessageID:       "j2k13lk231kj321jksklad",
-			Root:            "jdfsklj4kl32jl",
+			Root:            "traphouse",
 			SenderID:        "helene",
 			SenderName:      "Helene",
 			SenderLastName:  "Dufour",
 			SenderThumbnail: tn,
+			Text:            "This is a cloudy day which is perfect for coding end finishing the messaging part of down4",
+			Timestamp:       time.Now().Unix(),
+			IsChat:          true,
+		},
+	}
+
+	data, err := json.Marshal(normalChat)
+	if err != nil {
+		t.Errorf("error marshaling data: %v\n", err)
+	}
+
+	req := httptest.NewRequest("POST", "/", bytes.NewReader(data))
+	rsp := httptest.NewRecorder()
+
+	HandleMessageRequest(rsp, req)
+
+	fmt.Printf("response status: %v\n", rsp.Code)
+}
+
+func TestHyperchatWithoutMedia(t *testing.T) {
+
+	im, err := os.ReadFile("C:/Users/coton/Desktop/hashirama.png")
+	if err != nil {
+		t.Errorf("error reading image file for thumbnail: %v\n", err)
+	}
+	tn := base64.StdEncoding.EncodeToString(im)
+	if im, err = os.ReadFile("C:/Users/coton/Pictures/Chan/1630109700356.png"); err != nil {
+		t.Errorf("error reading image file for attachement: %v\n", err)
+
+	}
+	var im2 []byte
+	if im2, err = os.ReadFile("C:/Users/coton/Pictures/Chan/2d.png"); err != nil {
+		t.Errorf("error reading image file for attachement: %v\n", err)
+
+	}
+	d4media := Down4Media{
+		Identifier: "lol",
+		Data:       im2,
+		Metadata: map[string]string{
+			"o":   "scott",
+			"ts":  "312321443",
+			"pto": "false",
+			"shr": "true",
+			"ptv": "false",
+			"vid": "false",
+			"trv": "false",
+		},
+	}
+
+	pseudoNode := PseudoNode{
+		Identifier: "hyper",
+		Name:       "FirstHyperchat",
+		Image: Down4Media{
+			Identifier: "fjdkslfnmfndsmafjkdlsaf",
+			Data:       im,
+			Metadata: map[string]string{
+				"o":   "jeff",
+				"ts":  "3123231443",
+				"pto": "false",
+				"shr": "true",
+				"ptv": "false",
+				"vid": "false",
+				"trv": "false",
+			},
+		},
+	}
+
+	normalChat := MessageRequest{
+		WithUpload:  true,
+		IsGroup:     false,
+		IsHyperchat: true,
+		Targets:     []string{"bobo"},
+		GroupNode:   pseudoNode,
+		Message: Down4Message{
+			MessageID:       "j2k13lkff231kj321jksklad",
+			Root:            "hyperchat",
+			SenderID:        "what",
+			SenderName:      "Everactually",
+			SenderLastName:  "lol",
+			SenderThumbnail: tn,
+			Media:           d4media,
 			Text:            "This is a cloudy day which is perfect for coding end finishing the messaging part of down4",
 			Timestamp:       time.Now().Unix(),
 			IsChat:          true,
