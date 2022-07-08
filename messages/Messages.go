@@ -88,7 +88,8 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 	if req.Message.Media.Identifier != "" && !req.WithUpload {
 		if _, err := getMediaMetadata(ctx, req.Message.Media.Identifier); err != nil {
 			w.WriteHeader(http.StatusNoContent)
-			log.Fatalf("error, we will need an upload for this message: %v\n", err)
+			log.Printf("we will need an upload for this message: %v\n", err)
+			return
 		}
 	}
 
@@ -149,6 +150,8 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 		title = req.Message.SenderName + " created a group"
 	} else if req.IsHyperchat {
 		title = req.Message.SenderName + " created an hyperchat"
+	} else {
+		title = req.Message.SenderName + " " + req.Message.SenderLastName
 	}
 
 	if req.Message.Media.Identifier != "" {

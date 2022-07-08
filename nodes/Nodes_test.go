@@ -24,7 +24,7 @@ func (fn *OutputNode) Printable() map[string]interface{} {
 
 func TestGetNodesHTTP(t *testing.T) {
 
-	validNodes := []byte("jeff")
+	validNodes := []byte("bobo")
 
 	req1 := httptest.NewRequest("POST", "/", bytes.NewReader(validNodes))
 

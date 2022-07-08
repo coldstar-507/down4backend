@@ -77,7 +77,7 @@ func TestChatWithoutMediaUpload(t *testing.T) {
 	tn := base64.StdEncoding.EncodeToString(im)
 
 	d4mediaNoUpload := Down4Media{
-		Identifier: "litte-kid",
+		Identifier: "nigga",
 	}
 
 	chatWithoutMediaUpload := MessageRequest{
