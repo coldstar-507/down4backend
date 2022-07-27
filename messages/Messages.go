@@ -198,7 +198,8 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 	if req.Message.Media.Identifier != "" && !req.WithUpload {
 		if _, err := getMediaMetadata(ctx, req.Message.Media.Identifier); err != nil {
 			w.WriteHeader(http.StatusNoContent)
-			log.Fatalf("error, we will need an upload for this message: %v\n", err)
+			log.Printf("we will need an upload for this message: %v\n", err)
+			return
 		}
 	}
 

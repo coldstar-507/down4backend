@@ -33,16 +33,17 @@ func TestHandlePingRequest(t *testing.T) {
 
 }
 
-func TestHandleSnipRequest(t *testing.T) {
-	snip := SnipRequest{
-		Targets: []string{"name"},
-		Message: Down4Message{
-			SenderID:       "niggler",
-			SenderName:     "Niggler",
-			SenderLastName: "Bato",
-		},
-	}
-}
+// func TestHandleSnipRequest(t *testing.T) {
+// 	snip := SnipRequest{
+// 		Targets: []string{"name"},
+// 		Message: Down4Message{
+// 			SenderID:       "niggler",
+// 			SenderName:     "Niggler",
+// 			SenderLastName: "Bato",
+
+// 		},
+// 	}
+// }
 
 func TestGetMessageMediaHTTP(t *testing.T) {
 	mediaName := "1628475211371.jpg"
