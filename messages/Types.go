@@ -37,18 +37,6 @@ type Down4Message struct {
 	Media              Down4Media `json:"m"`
 }
 
-type FriendRequest struct {
-	RequesterID       string   `json:"id"`
-	RequesterName     string   `json:"nm"`
-	RequesterLastName string   `json:"ln"`
-	Targets           []string `json:"trgts"`
-}
-
-type FriendRequestAccepted struct {
-	Sender   string `json:"sender"`
-	Accepter string `json:"accepter"`
-}
-
 type MessageRequest struct {
 	WithUpload  bool         `json:"wu"`
 	IsHyperchat bool         `json:"ihc"`
@@ -57,6 +45,28 @@ type MessageRequest struct {
 	Message     Down4Message `json:"msg"`
 	Targets     []string     `json:"trgts"`
 }
+
+type PingRequest struct {
+	Targets []string     `json:"trgts"`
+	Message Down4Message `json:"msg"`
+}
+
+type SnipRequest = PingRequest
+
+type ChatRequest struct {
+	Targets    []string     `json:"trgts"`
+	Message    Down4Message `json:"msg"`
+	WithUpload bool         `json:"wu"`
+}
+
+type HyperchatRequest struct {
+	Targets    []string     `json:"trgts"`
+	Message    Down4Message `json:"msg"`
+	WithUpload bool         `json:"wu"`
+	GroupNode  PseudoNode   `json:"g"`
+}
+
+type GroupRequest = HyperchatRequest
 
 func (req *MessageRequest) ToNotification() *map[string]string {
 
