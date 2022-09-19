@@ -7,6 +7,7 @@ type Down4Media struct {
 }
 
 type FireStoreNode struct {
+	Neuter     string   `json:"nt"`
 	Identifier string   `json:"id"`
 	Type       string   `json:"t"`
 	Name       string   `json:"nm"`
@@ -25,6 +26,7 @@ type FireStoreNode struct {
 }
 
 type OutputNode struct {
+	Neuter     string     `json:"nt"`
 	Identifier string     `json:"id"`
 	Type       string     `json:"t"`
 	Name       string     `json:"nm"`
