@@ -158,14 +158,17 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 			Secret:   info.Secret,
 			Activity: time.Now().Unix(),
 			Token:    info.Token,
+<<<<<<< HEAD
 			Snips:    make(map[string]string),
 			Messages: make(map[string]string),
 			Payments: make(map[string]string),
+=======
+>>>>>>> ef041ca0f6586127397a950f701a07a0674cce75
 		}
 		return realtimeUserInfo, nil
 	}
 
-	if err := is.RTDB.NewRef(info.Identifier).Transaction(ctx, createRealtimeUser); err != nil {
+	if err := is.RTDB.NewRef("Users/"+info.Identifier).Transaction(ctx, createRealtimeUser); err != nil {
 		nodeRef.Delete(ctx)
 		is.NDBCKT.Object(info.Image.Identifier).Delete(ctx)
 		w.WriteHeader(http.StatusInternalServerError)

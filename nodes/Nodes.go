@@ -39,7 +39,6 @@ func init() {
 		FS:     fs,
 		NDBCKT: ndbcket,
 	}
-
 }
 
 func GetNodes(w http.ResponseWriter, r *http.Request) {
