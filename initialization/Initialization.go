@@ -117,6 +117,7 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 			return ErrUsernameAlreadyExists
 		}
 		nodeInfo := FireStoreNode{
+			Neuter:     info.Neuter,
 			Identifier: info.Identifier,
 			Name:       info.Name,
 			Lastname:   info.Lastname,
@@ -130,6 +131,7 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 			Childs:     make([]string, 0),
 			Parents:    make([]string, 0),
 			Words:      make([]string, 0),
+			Group:      make([]string, 0),
 		}
 		if err := tx.Set(nodeRef, nodeInfo); err != nil {
 			return err
@@ -156,11 +158,9 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 			Secret:   info.Secret,
 			Activity: time.Now().Unix(),
 			Token:    info.Token,
-			Money: PublicMoneyInfo{
-				Neuter: info.Neuter,
-				Index:  0,
-				Change: 1,
-			},
+			Snips:    make(map[string]string),
+			Messages: make(map[string]string),
+			Payments: make(map[string]string),
 		}
 		return realtimeUserInfo, nil
 	}
