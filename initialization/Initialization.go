@@ -30,7 +30,6 @@ type InitializationServer struct {
 var is InitializationServer
 
 func init() {
-
 	config := &firebase.Config{
 		DatabaseURL: "https://down4-26ee1-default-rtdb.firebaseio.com/",
 	}
@@ -64,7 +63,6 @@ func init() {
 		RTDB:   rtdb,
 		NDBCKT: ndbcket,
 	}
-
 }
 
 func IsValidUsername(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +91,6 @@ func IsValidUsername(w http.ResponseWriter, r *http.Request) {
 }
 
 func InitUser(w http.ResponseWriter, r *http.Request) {
-
 	ctx := context.Background()
 
 	var info InitUserInfo
@@ -158,12 +155,9 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 			Secret:   info.Secret,
 			Activity: time.Now().Unix(),
 			Token:    info.Token,
-<<<<<<< HEAD
 			Snips:    make(map[string]string),
 			Messages: make(map[string]string),
 			Payments: make(map[string]string),
-=======
->>>>>>> ef041ca0f6586127397a950f701a07a0674cce75
 		}
 		return realtimeUserInfo, nil
 	}

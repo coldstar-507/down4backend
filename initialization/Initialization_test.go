@@ -31,18 +31,20 @@ func TestUsernameValidityHttp(t *testing.T) {
 
 func TestUserInitializationHttp(t *testing.T) {
 
-	im, err := os.ReadFile("C:/Users/coton/Pictures/Chan/393yogreenlandshark.jpg")
+	im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
 	if err != nil {
 		t.Errorf("error reading file image for user init test: %v\n", err)
 	}
 
 	jeff := InitUserInfo{
-		Secret:     "fkldsajffdfdflsdkajf",
-		Name:       "Helene",
-		Lastname:   "Dufour",
-		Identifier: "helene",
+		Neuter:     "I am a neuter motherfuckers",
+		Secret:     "I am an important secret",
+		Token:      "I am a token bro",
+		Name:       "Craig",
+		Lastname:   "Wright",
+		Identifier: "satoshi",
 		Image: Down4Media{
-			Identifier: "helenephoto",
+			Identifier: "basedretard",
 			Data:       im,
 			Metadata: map[string]string{
 				"o":   "helene",
@@ -54,8 +56,6 @@ func TestUserInitializationHttp(t *testing.T) {
 				"pto": "false",
 			},
 		},
-		Token:  "fjdsklafj89dfjs8afjsdokfj",
-		Neuter: "jfdkls213123jfldksjfl3213kdsjflkdsjf321lkds",
 	}
 
 	marshalled, err := json.Marshal(jeff)

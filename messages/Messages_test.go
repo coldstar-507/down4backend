@@ -1,24 +1,39 @@
-// package messages
+package messages
 
-// import (
-// 	"bytes"
-// 	"encoding/json"
-// 	"fmt"
-// 	"net/http/httptest"
-// 	"os"
-// 	"testing"
-// )
+import (
+	"bytes"
+	"encoding/json"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
 
-// func TestHandlePingRequest(t *testing.T) {
-// 	ping := PingRequest{
-// 		Targets: []string{"name"},
-// 		Message: Down4Message{
-// 			SenderID:       "niggler",
-// 			SenderName:     "Niggler",
-// 			SenderLastName: "Bato",
-// 			Text:           "Hello my beautiful name!",
-// 		},
-// 	}
+func TestHandleChatRequest(t *testing.T) {
+	cr := ChatRequest{
+		Targets: []string{"satoshi"},
+		Message: Down4Message{
+			MessageID: "this is a message ID",
+			SenderID:  "scott",
+			Text:      "Hello satoshi nakomoto",
+			Timestamp: time.Now().Unix(),
+		},
+	}
+
+	marsh, err := json.Marshal(cr)
+	if err != nil {
+		t.Errorf("error marshalling chat request: %v\n", err)
+	}
+	reader := bytes.NewReader(marsh)
+
+	req := httptest.NewRequest("POST", "/", reader)
+	rsp := httptest.NewRecorder()
+
+	HandleChatRequest(rsp, req)
+
+	if rsp.Code != 200 {
+		t.Errorf("error handleing chat request")
+	}
+}
 
 // 	marsh, _ := json.Marshal(ping)
 // 	data := bytes.NewReader(marsh)

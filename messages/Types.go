@@ -1,10 +1,5 @@
 package messages
 
-import (
-	"strconv"
-	"strings"
-)
-
 type Down4Media struct {
 	Identifier string            `json:"id"`
 	Data       []byte            `json:"d"`
@@ -26,31 +21,51 @@ type Down4Message struct {
 	ForwarderID string     `json:"f"`
 	Text        string     `json:"txt"`
 	Timestamp   int64      `json:"ts"`
-	Reactions   string     `json:"r"`
+	Replies     string     `json:"r"`
 	Nodes       string     `json:"n"`
 	Media       Down4Media `json:"m"`
 }
 
 func (msg *Down4Message) ToRTDB() *map[string]interface{} {
-	return &map[string]interface{}{
-		"rt":  msg.Root,
-		"id":  msg.MessageID,
-		"s":   msg.SenderID,
-		"f":   msg.ForwarderID,
-		"txt": msg.Text,
-		"ts":  msg.Timestamp,
-		"r":   msg.Reactions,
-		"n":   msg.Nodes,
-		"m":   map[string]string{"id": msg.Media.Identifier},
+	m := make(map[string]interface{})
+
+	m["id"] = msg.MessageID
+	m["ts"] = msg.Timestamp
+	m["s"] = msg.SenderID
+
+	if len(msg.Root) > 0 {
+		m["rt"] = msg.Root
 	}
+
+	if len(msg.ForwarderID) > 0 {
+		m["f"] = msg.ForwarderID
+	}
+
+	if len(msg.Replies) > 0 {
+		m["r"] = msg.Replies
+	}
+
+	if len(msg.Nodes) > 0 {
+		m["n"] = msg.Nodes
+	}
+
+	if len(msg.Media.Identifier) > 0 {
+		m["m"] = map[string]string{"id": msg.Media.Identifier}
+	}
+
+	if len(msg.Text) > 0 {
+		m["txt"] = msg.Text
+	}
+
+	return &m
 }
 
-type MessageRequest struct {
-	WithUpload bool         `json:"wu"`
-	GroupNode  PseudoNode   `json:"g"`
-	Message    Down4Message `json:"msg"`
-	Targets    []string     `json:"trgts"`
-}
+// type MessageRequest struct {
+// 	WithUpload bool         `json:"wu"`
+// 	GroupNode  PseudoNode   `json:"g"`
+// 	Message    Down4Message `json:"msg"`
+// 	Targets    []string     `json:"trgts"`
+// }
 
 type PingRequest struct {
 	Targets []string     `json:"trgts"`
@@ -58,7 +73,7 @@ type PingRequest struct {
 }
 
 type SnipRequest struct {
-	Targets []string     `json:"trgts`
+	Targets []string     `json:"trgts"`
 	Message Down4Message `json:"msg"`
 }
 
@@ -86,58 +101,58 @@ type GroupRequest struct {
 	GroupMedia Down4Media   `json:"m"`
 }
 
-func (req *MessageRequest) ToNotification() *map[string]string {
+// func (req *MessageRequest) ToNotification() *map[string]string {
 
-	m := make(map[string]string)
+// 	m := make(map[string]string)
 
-	m["t"] = "chat"
+// 	m["t"] = "chat"
 
-	if req.IsGroup {
-		m["t"] = "group" // simply override
-		var friends []string
-		if req.Message.ForwarderID != "" {
-			friends = append(friends, req.Message.ForwarderID)
-		} else {
-			friends = append(friends, req.Message.SenderID)
-		}
-		m["gfr"] = strings.Join(friends, " ")
-		m["gid"] = req.GroupNode.Identifier
-		m["gnm"] = req.GroupNode.Name
-		m["gim"] = req.GroupNode.Image.Identifier
-	} else if req.IsHyperchat {
-		m["t"] = "hyperchat" // simply override
-		var friends []string
-		if req.Message.ForwarderID != "" {
-			friends = append(friends, req.Message.ForwarderID)
-		} else {
-			friends = append(friends, req.Message.SenderID)
-		}
-		m["hcfr"] = strings.Join(friends, " ")
-		m["hcid"] = req.GroupNode.Identifier
-		m["hcnm"] = req.GroupNode.Name
-		m["hcln"] = req.GroupNode.LastName
-		m["hcim"] = req.GroupNode.Image.Identifier
-	}
+// 	if req.IsGroup {
+// 		m["t"] = "group" // simply override
+// 		var friends []string
+// 		if req.Message.ForwarderID != "" {
+// 			friends = append(friends, req.Message.ForwarderID)
+// 		} else {
+// 			friends = append(friends, req.Message.SenderID)
+// 		}
+// 		m["gfr"] = strings.Join(friends, " ")
+// 		m["gid"] = req.GroupNode.Identifier
+// 		m["gnm"] = req.GroupNode.Name
+// 		m["gim"] = req.GroupNode.Image.Identifier
+// 	} else if req.IsHyperchat {
+// 		m["t"] = "hyperchat" // simply override
+// 		var friends []string
+// 		if req.Message.ForwarderID != "" {
+// 			friends = append(friends, req.Message.ForwarderID)
+// 		} else {
+// 			friends = append(friends, req.Message.SenderID)
+// 		}
+// 		m["hcfr"] = strings.Join(friends, " ")
+// 		m["hcid"] = req.GroupNode.Identifier
+// 		m["hcnm"] = req.GroupNode.Name
+// 		m["hcln"] = req.GroupNode.LastName
+// 		m["hcim"] = req.GroupNode.Image.Identifier
+// 	}
 
-	m["rt"] = req.Message.Root
-	m["msgid"] = req.Message.MessageID
-	m["sdrid"] = req.Message.SenderID
-	m["sdrnm"] = req.Message.SenderName
-	m["sdrln"] = req.Message.SenderLastName
-	m["sdrtn"] = req.Message.SenderThumbnail
-	m["fdrid"] = req.Message.ForwarderID
-	m["fdrnm"] = req.Message.ForwarderName
-	m["fdrln"] = req.Message.ForwarderLastName
-	m["fdrtn"] = req.Message.ForwarderThumbnail
-	m["txt"] = req.Message.Text
-	m["ts"] = strconv.FormatInt(req.Message.Timestamp, 10)
-	m["ischt"] = strconv.FormatBool(req.Message.IsChat)
-	m["r"] = strings.Join(req.Message.Reactions, " ")
-	m["n"] = strings.Join(req.Message.Nodes, " ")
-	m["mid"] = req.Message.Media.Identifier
+// 	m["rt"] = req.Message.Root
+// 	m["msgid"] = req.Message.MessageID
+// 	m["sdrid"] = req.Message.SenderID
+// 	m["sdrnm"] = req.Message.SenderName
+// 	m["sdrln"] = req.Message.SenderLastName
+// 	m["sdrtn"] = req.Message.SenderThumbnail
+// 	m["fdrid"] = req.Message.ForwarderID
+// 	m["fdrnm"] = req.Message.ForwarderName
+// 	m["fdrln"] = req.Message.ForwarderLastName
+// 	m["fdrtn"] = req.Message.ForwarderThumbnail
+// 	m["txt"] = req.Message.Text
+// 	m["ts"] = strconv.FormatInt(req.Message.Timestamp, 10)
+// 	m["ischt"] = strconv.FormatBool(req.Message.IsChat)
+// 	m["r"] = strings.Join(req.Message.Replies, " ")
+// 	m["n"] = strings.Join(req.Message.Nodes, " ")
+// 	m["mid"] = req.Message.Media.Identifier
 
-	return &m
-}
+// 	return &m
+// }
 
 type FireStoreNode struct {
 	Identifier string   `json:"id"`
