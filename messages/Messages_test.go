@@ -35,6 +35,36 @@ func TestHandleChatRequest(t *testing.T) {
 	}
 }
 
+func TestHandleHyperchatRequest(t *testing.T) {
+	cr := HyperchatRequest{
+		Targets:    []string{"satoshi"},
+		WordPairs:  []string{"pink bow", "disk job"},
+		WithUpload: false,
+		Message: Down4Message{
+			Root:      "gjkdflj423kljfdsakl34j",
+			MessageID: "this is a message ID",
+			SenderID:  "scott",
+			Text:      "Hello satoshi nakomoto",
+			Timestamp: time.Now().Unix(),
+		},
+	}
+
+	marsh, err := json.Marshal(cr)
+	if err != nil {
+		t.Errorf("error marshalling chat request: %v\n", err)
+	}
+	reader := bytes.NewReader(marsh)
+
+	req := httptest.NewRequest("POST", "/", reader)
+	rsp := httptest.NewRecorder()
+
+	HandleHyperchatRequest(rsp, req)
+
+	if rsp.Code != 200 {
+		t.Errorf("error handleing hyperchat request")
+	}
+}
+
 // 	marsh, _ := json.Marshal(ping)
 // 	data := bytes.NewReader(marsh)
 

@@ -1,11 +1,15 @@
 package messages
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -98,7 +102,7 @@ func HandlePayment(w http.ResponseWriter, r *http.Request) {
 	errChan2 := make(chan *error, len(req.Targets))
 	ackChan := make(chan bool, len(req.Targets))
 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-	go pushEvent(ctx, req.PaymentID, req.Targets, Pay, ackChan, errChan2)
+	go pushEvent(ctx, req.PaymentID, req.Targets, ackChan, errChan2)
 
 	tokens := make([]string, 0)
 
@@ -115,7 +119,7 @@ func HandlePayment(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	title := "@" + req.Sender + "payed you"
+	title := "@" + req.Sender + "payed you!"
 
 	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
@@ -187,19 +191,10 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 	mediaWriter := ms.MSGBCKT.Object(req.Message.Media.Identifier).NewWriter(ctx)
 	mediaWriter.Write(req.Message.Media.Data)
 
-	tknChan := make(chan *string, len(req.Targets))
-	errChan := make(chan *error, len(req.Targets))
-	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-
-	tokens := make([]string, 0)
-
-	for range req.Targets {
-		select {
-		case adr := <-tknChan:
-			tokens = append(tokens, *adr)
-		case err := <-errChan:
-			log.Printf("error getting a target: %v\n", *err)
-		}
+	err := ms.RTDB.NewRef("Messages").Child(req.Message.MessageID).Set(ctx, req.Message.ToRTDB())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing snip to rtdb: %v\n", err)
 	}
 
 	if err := mediaWriter.Close(); err != nil {
@@ -213,6 +208,29 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing snip: %v\n", err)
+	}
+
+	tknChan := make(chan *string, len(req.Targets))
+	errChan := make(chan *error, len(req.Targets))
+	errChan2 := make(chan *error, len(req.Targets))
+	ackChan := make(chan bool, len(req.Targets))
+
+	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
+	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2)
+
+	tokens := make([]string, 0)
+
+	for i := 0; i < len(req.Targets)*2; i++ {
+		select {
+		case adr := <-tknChan:
+			tokens = append(tokens, *adr)
+		case err := <-errChan:
+			log.Printf("error getting a target: %v\n", *err)
+		case err2 := <-errChan2:
+			log.Printf("error pushing message to a target: %v\n", *err2)
+		case <-ackChan:
+			continue
+		}
 	}
 
 	title := "@" + req.Message.SenderID + " pinged you!"
@@ -301,7 +319,7 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 	errChan2 := make(chan *error, len(req.Targets))
 	ackChan := make(chan bool, len(req.Targets))
 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-	go pushEvent(ctx, req.Message.MessageID, req.Targets, Chat, ackChan, errChan2)
+	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2)
 
 	tokens := make([]string, 0)
 
@@ -346,90 +364,145 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
-// 	ctx := context.Background()
+func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
 
-// 	var req HyperchatRequest
-// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-// 		w.WriteHeader(http.StatusInternalServerError)
-// 		log.Fatalf("error decoding body: %v\n", err)
-// 	}
+	var req HyperchatRequest
 
-// 	if req.Message.Media.Identifier != "" && !req.WithUpload {
-// 		if _, err := getMediaMetadata(ctx, req.Message.Media.Identifier); err != nil {
-// 			w.WriteHeader(http.StatusNoContent)
-// 			log.Fatalf("we will need an upload for this message: %v\n", err)
-// 		}
-// 	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error decoding body: %v\n", err)
+	}
 
-// 	var hyperchatMediaWriter, mediaWriter *storage.Writer
-// 	hyperchatMediaWriter = ms.MSGBCKT.Object(req.GroupNode.Identifier).NewWriter(ctx)
-// 	hyperchatMediaWriter.Write(req.GroupNode.Image.Data)
-// 	if req.WithUpload {
-// 		mediaWriter = ms.MSGBCKT.Object(req.Message.Media.Identifier).NewWriter(ctx)
-// 		mediaWriter.Write(req.Message.Media.Data)
+	req.Targets = append(req.Targets, req.Message.SenderID)
 
-// 	}
+	msgRef := ms.RTDB.NewRef("Messages").Child(req.Message.MessageID)
 
-// 	tknChan := make(chan *string, len(req.Targets))
-// 	errChan := make(chan *error, len(req.Targets))
-// 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
+	if req.Message.Media.Identifier != "" && !req.WithUpload {
+		if _, err := getMediaMetadata(ctx, req.Message.Media.Identifier); err != nil {
+			w.WriteHeader(http.StatusNoContent)
+			log.Printf("we will need an upload for this message: %v\n", err)
+			return
+		}
+	}
 
-// 	tokens := make([]string, 0)
+	reqBody, err := json.Marshal(req.WordPairs)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error encoding wordpairs for http request: %v\n", err)
+	}
 
-// 	for range req.Targets {
-// 		select {
-// 		case adr := <-tknChan:
-// 			tokens = append(tokens, *adr)
-// 		case err := <-errChan:
-// 			log.Printf("error getting a target: %v\n", *err)
-// 		}
-// 	}
+	imageGenRes, err := http.Post("http://localhost:8080", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error making imageGen request: %v\n", err)
+	}
 
-// 	if err := hyperchatMediaWriter.Close(); err != nil {
-// 		w.WriteHeader(http.StatusInternalServerError)
-// 		log.Fatalf("error writing group media: %v\n", err)
-// 		if err := updateMediaMetadata(ctx, req.GroupNode.Image.Identifier, &req.GroupNode.Image.Metadata); err != nil {
-// 			if err := deleteMedia(ctx, req.Message.Media.Identifier); err != nil {
-// 				log.Printf("error deleting media at %s: %v\n", req.GroupNode.Image.Identifier, err)
-// 			}
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			log.Fatalf("error updating media metadata: %v\n", err)
-// 		}
-// 	}
+	jsonImGen := make(map[string]string)
+	if err := json.NewDecoder(imageGenRes.Body).Decode(&jsonImGen); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error reading hyperchat image body to Json: %v\n", err)
+	}
+	wp := strings.Split(jsonImGen["prompt"], " ")
 
-// 	if mediaWriter != nil {
-// 		if err := mediaWriter.Close(); err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			log.Fatalf("error closing media writer: %v\n", err)
-// 		}
-// 		if err := updateMediaMetadata(ctx, req.Message.Media.Identifier, &req.Message.Media.Metadata); err != nil {
-// 			if err := deleteMedia(ctx, req.Message.Media.Identifier); err != nil {
-// 				log.Printf("error deleting media at %s: %v\n", req.Message.Media.Identifier, err)
-// 			}
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			log.Fatalf("error updating media metadata: %v\n", err)
-// 		}
-// 	}
+	decodedImBuf := make([]byte, base64.StdEncoding.DecodedLen(len(jsonImGen["image"])))
+	if _, err := base64.StdEncoding.Decode(decodedImBuf, []byte(jsonImGen["image"])); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error reading hyperchat image body to Json: %v\n", err)
+	}
 
-// 	title := "Hyperchat by " + req.Message.SenderName + " " + req.Message.SenderLastName
-// 	body := req.Message.Text
+	var mediaWriter, mediaWriter2 *storage.Writer
+	if req.WithUpload {
+		mediaWriter = ms.MSGBCKT.Object(req.Message.Media.Identifier).NewWriter(ctx)
+		mediaWriter.Write(req.Message.Media.Data)
+	}
 
-// 	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
-// 		Tokens: tokens,
-// 		Notification: &messaging.Notification{
-// 			Title: title,
-// 			Body:  body,
-// 		},
-// 	}); err != nil {
-// 		w.WriteHeader(http.StatusInternalServerError)
-// 		log.Fatalf("error mutlicating message: %v\n", err)
-// 	}
+	mediaWriter2 = ms.MSGBCKT.Object(req.Message.Root).NewWriter(ctx)
+	mediaWriter2.Write(decodedImBuf)
 
-// 	if err := updateActivity(ctx, req.Message.SenderID); err != nil {
-// 		log.Printf("error updating activity for %s: %v\n", req.Message.SenderID, err)
-// 	}
-// }
+	if err := mediaWriter2.Close(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing hyperchatMedia to storage: %v\n", err)
+	} else {
+		if err := updateMediaMetadata(ctx, req.Message.Root, &map[string]string{
+			"ppl": strings.Join(req.Targets, " ") + " " + req.Message.SenderID,
+			"nm":  wp[0],
+			"ln":  wp[1],
+			"ts":  strconv.FormatInt(time.Now().Unix(), 10),
+		}); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Fatalf("error writing hyperchatMedia metadata to storage: %v\n", err)
+		}
+	}
+
+	if mediaWriter != nil {
+		if err := mediaWriter.Close(); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Fatalf("error writing media: %v\n", err)
+		}
+		if err := updateMediaMetadata(ctx, req.Message.Media.Identifier, &req.Message.Media.Metadata); err != nil {
+			if err := deleteMedia(ctx, req.Message.Media.Identifier); err != nil {
+				log.Printf("error deleting media at %s: %v\n", req.Message.Media.Identifier, err)
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Fatalf("error updating media metadata: %v\n", err)
+		}
+	}
+
+	if err := msgRef.Set(ctx, *req.Message.ToRTDB()); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing message to RTDB: %v\n", err)
+	}
+
+	tknChan := make(chan *string, len(req.Targets))
+	errChan := make(chan *error, len(req.Targets))
+	errChan2 := make(chan *error, len(req.Targets))
+	ackChan := make(chan bool, len(req.Targets))
+	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
+	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2)
+
+	tokens := make([]string, 0)
+
+	for i := 0; i < len(req.Targets)*2; i++ {
+		select {
+		case adr := <-tknChan:
+			tokens = append(tokens, *adr)
+		case err := <-errChan:
+			log.Printf("error getting a target: %v\n", *err)
+		case err2 := <-errChan2:
+			log.Printf("error pushing message to a target: %v\n", *err2)
+		case <-ackChan:
+			continue
+		}
+	}
+
+	var body, title string
+	title = wp[0] + " " + wp[1]
+	if req.Message.Media.Identifier != "" {
+		if req.Message.Text != "" {
+			body = "@" + req.Message.SenderID + "\n" + req.Message.Text + "\n" + "&attachment"
+		} else {
+			body = "@" + req.Message.SenderID + "\n" + "&attachment"
+		}
+	} else {
+		body = "@" + req.Message.SenderID + "\n" + req.Message.Text
+	}
+
+	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
+		Tokens: tokens,
+		Notification: &messaging.Notification{
+			Title: title,
+			Body:  body,
+		},
+	}); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error mutlicating message: %v\n", err)
+	}
+
+	if err := updateActivity(ctx, req.Message.SenderID); err != nil {
+		log.Printf("error updating activity for %s: %v\n", req.Message.SenderID, err)
+	}
+}
 
 func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
@@ -481,7 +554,7 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 	errChan2 := make(chan *error, len(req.Targets))
 	ackChan := make(chan bool, len(req.Targets))
 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-	go pushEvent(ctx, req.Message.MessageID, req.Targets, Chat, ackChan, errChan2)
+	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2)
 
 	tokens := make([]string, 0)
 
@@ -651,16 +724,10 @@ func updateActivity(ctx context.Context, uid string) error {
 	return err
 }
 
-const (
-	Chat = "c"
-	Snip = "s"
-	Pay  = "p"
-)
-
-func pushEvent(ctx context.Context, objectID string, targets []string, T string, ch chan bool, ech chan *error) {
+func pushEvent(ctx context.Context, objectID string, targets []string, ch chan bool, ech chan *error) {
 	for _, target := range targets {
 		target_ := target
-		dbRef := ms.RTDB.NewRef("Users").Child(target_).Child(T).Child(objectID)
+		dbRef := ms.RTDB.NewRef("Users").Child(target_).Child("M").Child(objectID)
 		if err := dbRef.Set(ctx, ""); err != nil {
 			ech <- &err
 		} else {
@@ -668,107 +735,3 @@ func pushEvent(ctx context.Context, objectID string, targets []string, T string,
 		}
 	}
 }
-
-// func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
-// 	ctx := context.Background()
-
-// 	var req MessageRequest
-// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-// 		w.WriteHeader(http.StatusInternalServerError)
-// 		log.Fatalf("error decoding body: %v\n", err)
-// 	}
-
-// 	if req.Message.Media.Identifier != "" && !req.WithUpload {
-// 		if _, err := getMediaMetadata(ctx, req.Message.Media.Identifier); err != nil {
-// 			w.WriteHeader(http.StatusNoContent)
-// 			log.Fatalf("error, we will need an upload for this message: %v\n", err)
-// 		}
-// 	}
-
-// 	var groupMediaWriter *storage.Writer
-// 	if req.GroupNode.Identifier != "" {
-// 		groupMediaWriter = ms.MSGBCKT.Object(req.GroupNode.Image.Identifier).NewWriter(ctx)
-// 		groupMediaWriter.Write(req.GroupNode.Image.Data)
-// 	}
-
-// 	var mediaWriter *storage.Writer
-// 	if req.Message.Media.Identifier != "" && req.WithUpload {
-// 		mediaWriter = ms.MSGBCKT.Object(req.Message.Media.Identifier).NewWriter(ctx)
-// 		mediaWriter.Write(req.Message.Media.Data)
-// 	}
-
-// 	tknChan := make(chan *string, len(req.Targets))
-// 	errChan := make(chan *error, len(req.Targets))
-// 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-
-// 	tokens := make([]string, 0)
-
-// 	for range req.Targets {
-// 		select {
-// 		case adr := <-tknChan:
-// 			tokens = append(tokens, *adr)
-// 		case err := <-errChan:
-// 			log.Printf("error getting a target: %v\n", *err)
-// 		}
-// 	}
-
-// 	if groupMediaWriter != nil {
-// 		if err := groupMediaWriter.Close(); err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			log.Fatalf("error writing group media: %v\n", err)
-// 		}
-// 		if err := updateMediaMetadata(ctx, req.GroupNode.Image.Identifier, &req.GroupNode.Image.Metadata); err != nil {
-// 			deleteMedia(ctx, req.GroupNode.Identifier)
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			log.Fatalf("error writing group media metadata: %v\n", err)
-// 		}
-// 	}
-
-// 	if mediaWriter != nil {
-// 		if err := mediaWriter.Close(); err != nil {
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			log.Fatalf("error writing media: %v\n", err)
-// 		}
-// 		if err := updateMediaMetadata(ctx, req.Message.Media.Identifier, &req.Message.Media.Metadata); err != nil {
-// 			deleteMedia(ctx, req.GroupNode.Identifier)
-// 			deleteMedia(ctx, req.Message.Media.Identifier)
-// 			w.WriteHeader(http.StatusInternalServerError)
-// 			log.Fatalf("error writing group media metadata: %v\n", err)
-// 		}
-// 	}
-
-// 	var title, body string
-// 	if req.IsGroup {
-// 		title = req.Message.SenderName + " created a group"
-// 	} else if req.IsHyperchat {
-// 		title = req.Message.SenderName + " created an hyperchat"
-// 	}
-
-// 	if req.Message.Media.Identifier != "" {
-// 		if req.Message.Text != "" {
-// 			body = req.Message.Text + "\n" + "&attachment"
-// 		} else {
-// 			body = "&attachment"
-// 		}
-// 	} else {
-// 		body = req.Message.Text
-// 	}
-
-// 	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
-// 		Tokens: tokens,
-// 		Data:   *req.ToNotification(),
-// 		Notification: &messaging.Notification{
-// 			Title: title,
-// 			Body:  body,
-// 		},
-// 	}); err != nil {
-// 		deleteMedia(ctx, req.GroupNode.Identifier)
-// 		deleteMedia(ctx, req.Message.Media.Identifier)
-// 		w.WriteHeader(http.StatusInternalServerError)
-// 		log.Fatalf("error mutlicating message: %v\n", err)
-// 	}
-
-// 	w.WriteHeader(http.StatusOK)
-
-// 	updateActivity(ctx, req.Message.SenderID)
-// }

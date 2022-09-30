@@ -15,15 +15,17 @@ type PseudoNode struct {
 }
 
 type Down4Message struct {
-	Root        string     `json:"rt"`
-	MessageID   string     `json:"id"`
-	SenderID    string     `json:"s"`
-	ForwarderID string     `json:"f"`
-	Text        string     `json:"txt"`
-	Timestamp   int64      `json:"ts"`
-	Replies     string     `json:"r"`
-	Nodes       string     `json:"n"`
-	Media       Down4Media `json:"m"`
+	Type        string               `json:"t"`
+	Root        string               `json:"rt"`
+	MessageID   string               `json:"id"`
+	SenderID    string               `json:"s"`
+	ForwarderID string               `json:"f"`
+	Text        string               `json:"txt"`
+	Timestamp   int64                `json:"ts"`
+	Replies     string               `json:"r"`
+	Nodes       string               `json:"n"`
+	Media       Down4Media           `json:"m"`
+	Payment     Down4InternetPayment `json:"pay"`
 }
 
 func (msg *Down4Message) ToRTDB() *map[string]interface{} {
@@ -32,6 +34,11 @@ func (msg *Down4Message) ToRTDB() *map[string]interface{} {
 	m["id"] = msg.MessageID
 	m["ts"] = msg.Timestamp
 	m["s"] = msg.SenderID
+	m["t"] = msg.Type
+
+	if len(msg.Payment.PaymentID) > 0 {
+		m["pay"] = map[string]string{"id": msg.Payment.PaymentID}
+	}
 
 	if len(msg.Root) > 0 {
 		m["rt"] = msg.Root
@@ -60,13 +67,6 @@ func (msg *Down4Message) ToRTDB() *map[string]interface{} {
 	return &m
 }
 
-// type MessageRequest struct {
-// 	WithUpload bool         `json:"wu"`
-// 	GroupNode  PseudoNode   `json:"g"`
-// 	Message    Down4Message `json:"msg"`
-// 	Targets    []string     `json:"trgts"`
-// }
-
 type PingRequest struct {
 	Targets []string     `json:"trgts"`
 	Message Down4Message `json:"msg"`
@@ -86,10 +86,9 @@ type ChatRequest struct {
 
 type HyperchatRequest struct {
 	Targets    []string     `json:"trgts"`
+	WordPairs  []string     `json:"wp"`
 	Message    Down4Message `json:"msg"`
 	WithUpload bool         `json:"wu"`
-	Name       string       `json:"nm"`
-	LastName   string       `json:"ln"`
 }
 
 type GroupRequest struct {
@@ -100,59 +99,6 @@ type GroupRequest struct {
 	GroupID    string       `json:"id"`
 	GroupMedia Down4Media   `json:"m"`
 }
-
-// func (req *MessageRequest) ToNotification() *map[string]string {
-
-// 	m := make(map[string]string)
-
-// 	m["t"] = "chat"
-
-// 	if req.IsGroup {
-// 		m["t"] = "group" // simply override
-// 		var friends []string
-// 		if req.Message.ForwarderID != "" {
-// 			friends = append(friends, req.Message.ForwarderID)
-// 		} else {
-// 			friends = append(friends, req.Message.SenderID)
-// 		}
-// 		m["gfr"] = strings.Join(friends, " ")
-// 		m["gid"] = req.GroupNode.Identifier
-// 		m["gnm"] = req.GroupNode.Name
-// 		m["gim"] = req.GroupNode.Image.Identifier
-// 	} else if req.IsHyperchat {
-// 		m["t"] = "hyperchat" // simply override
-// 		var friends []string
-// 		if req.Message.ForwarderID != "" {
-// 			friends = append(friends, req.Message.ForwarderID)
-// 		} else {
-// 			friends = append(friends, req.Message.SenderID)
-// 		}
-// 		m["hcfr"] = strings.Join(friends, " ")
-// 		m["hcid"] = req.GroupNode.Identifier
-// 		m["hcnm"] = req.GroupNode.Name
-// 		m["hcln"] = req.GroupNode.LastName
-// 		m["hcim"] = req.GroupNode.Image.Identifier
-// 	}
-
-// 	m["rt"] = req.Message.Root
-// 	m["msgid"] = req.Message.MessageID
-// 	m["sdrid"] = req.Message.SenderID
-// 	m["sdrnm"] = req.Message.SenderName
-// 	m["sdrln"] = req.Message.SenderLastName
-// 	m["sdrtn"] = req.Message.SenderThumbnail
-// 	m["fdrid"] = req.Message.ForwarderID
-// 	m["fdrnm"] = req.Message.ForwarderName
-// 	m["fdrln"] = req.Message.ForwarderLastName
-// 	m["fdrtn"] = req.Message.ForwarderThumbnail
-// 	m["txt"] = req.Message.Text
-// 	m["ts"] = strconv.FormatInt(req.Message.Timestamp, 10)
-// 	m["ischt"] = strconv.FormatBool(req.Message.IsChat)
-// 	m["r"] = strings.Join(req.Message.Replies, " ")
-// 	m["n"] = strings.Join(req.Message.Nodes, " ")
-// 	m["mid"] = req.Message.Media.Identifier
-
-// 	return &m
-// }
 
 type FireStoreNode struct {
 	Identifier string   `json:"id"`
