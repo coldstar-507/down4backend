@@ -98,6 +98,7 @@ type GroupRequest struct {
 	GroupName  string       `json:"gn"`
 	GroupID    string       `json:"id"`
 	GroupMedia Down4Media   `json:"m"`
+	Private    bool         `json:"pv"`
 }
 
 type FireStoreNode struct {
@@ -106,6 +107,7 @@ type FireStoreNode struct {
 	Name       string   `json:"nm"`
 	Lastname   string   `json:"ln"`
 	ImageID    string   `json:"im"`
+	Private    bool     `json:"pv"`
 	Latitude   float32  `json:"lat"`
 	Longitude  float32  `json:"lng"`
 	Friends    []string `json:"frd"`
