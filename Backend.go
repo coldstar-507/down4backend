@@ -1,10 +1,13 @@
-package messages
+package backend
 
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -17,9 +20,14 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/db"
 	"firebase.google.com/go/v4/messaging"
+	"github.com/libsv/go-bk/bip39"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-type MessageServer struct {
+var ErrUsernameAlreadyExists = errors.New("username already exists")
+
+type Server struct {
 	FS      *firestore.Client
 	RTDB    *db.Client
 	MSGBCKT *storage.BucketHandle
@@ -28,7 +36,7 @@ type MessageServer struct {
 	URLOPTS *storage.SignedURLOptions
 }
 
-var ms MessageServer
+var s Server
 
 func init() {
 
@@ -67,7 +75,7 @@ func init() {
 	msgbckt := stor.Bucket("down4-26ee1-messages")
 	ndbckt := stor.Bucket("down4-26ee1-nodes")
 
-	ms = MessageServer{
+	s = Server{
 		FS:      fs,
 		RTDB:    rtdb,
 		MSGBCKT: msgbckt,
@@ -80,16 +88,196 @@ func init() {
 	}
 }
 
-func HandlePayment(w http.ResponseWriter, r *http.Request) {
+func IsValidUsername(w http.ResponseWriter, r *http.Request) {
+
 	ctx := context.Background()
 
-	var req Down4InternetPayment
+	buf, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error reading username from request: %v\n", err)
+	}
+
+	username := string(buf)
+
+	var isValid bool
+	if isValid, err = isValidUsername(ctx, username); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error checking if username is valid: %v\n", err)
+	}
+
+	if isValid {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func InitUser(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+
+	var info InitUserInfo
+	if err := json.NewDecoder(r.Body).Decode(&info); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error decoding userinfo: %v\n", err)
+	}
+
+	if err := uploadNodeMedia(ctx, info.Image); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error uploading media in user initialization: %v\n", err)
+	}
+
+	nodeRef := s.FS.Collection("Nodes").Doc(info.Identifier)
+	createFirestoreNode := func(ctx context.Context, tx *firestore.Transaction) error {
+		nodeSnap, err := tx.Get(nodeRef)
+		if err != nil && status.Code(err) != codes.NotFound {
+			return err
+		}
+		if nodeSnap.Exists() {
+			return ErrUsernameAlreadyExists
+		}
+		nodeInfo := FireStoreNode{
+			Neuter:     info.Neuter,
+			Identifier: info.Identifier,
+			Name:       info.Name,
+			Lastname:   info.Lastname,
+			ImageID:    info.Image.Identifier,
+			Type:       "user",
+			Longitude:  0,
+			Latitude:   0,
+			Friends:    make([]string, 0),
+			Admins:     make([]string, 0),
+			Messages:   make([]string, 0),
+			Childs:     make([]string, 0),
+			Parents:    make([]string, 0),
+			Words:      make([]string, 0),
+			Group:      make([]string, 0),
+		}
+		if err := tx.Set(nodeRef, nodeInfo); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	if err := s.FS.RunTransaction(ctx, createFirestoreNode); err != nil {
+		s.NDBCKT.Object(info.Image.Identifier).Delete(ctx) // try deleting object, doesn't really matter if it fails
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing user info transaction: %v\n", err)
+	}
+
+	createRealtimeUser := func(tn db.TransactionNode) (interface{}, error) {
+		var currentInfos map[string]interface{}
+		if err := tn.Unmarshal(&currentInfos); err != nil {
+			return nil, err
+		}
+		if len(currentInfos) > 0 {
+			return nil, ErrUsernameAlreadyExists
+		}
+		realtimeUserInfo := UserInfo{
+			Secret:   info.Secret,
+			Activity: time.Now().Unix(),
+			Token:    info.Token,
+			Snips:    make(map[string]string),
+			Messages: make(map[string]string),
+			Payments: make(map[string]string),
+		}
+		return realtimeUserInfo, nil
+	}
+
+	if err := s.RTDB.NewRef("Users/"+info.Identifier).Transaction(ctx, createRealtimeUser); err != nil {
+		nodeRef.Delete(ctx)
+		s.NDBCKT.Object(info.Image.Identifier).Delete(ctx)
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing userinfo on realtimeDB in initUser: %v\n", err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func GenerateMnemonic(w http.ResponseWriter, r *http.Request) {
+
+	const (
+		passKey = ""
+		childNo = "0"
+	)
+
+	entropy, err := bip39.GenerateEntropy(bip39.EntWords12)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error generating entropy: %v\n", err)
+	}
+
+	mnemonic, _, err := bip39.Mnemonic(entropy, passKey)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error generating mnemonic: %v\n", err)
+	}
+
+	if _, err := w.Write([]byte(mnemonic)); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing mnemonic to response: %v\n", err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func GetNodes(w http.ResponseWriter, r *http.Request) {
+
+	ctx := context.Background()
+
+	bytesIDs, err := io.ReadAll(r.Body) // expect a string of IDs linked by a space " "
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error reading data from request in GetNodes: %v\n", err)
+	}
+
+	ids := strings.Split(string(bytesIDs), " ")
+
+	// buffered is faster and espicially more consistent
+	errChan := make(chan *error, len(ids))
+	nodeChan := make(chan *FullNode, len(ids))
+	go func() {
+		for _, id := range ids {
+			id_ := id
+			go getNode(ctx, id_, nodeChan, errChan)
+		}
+	}()
+
+	nodes := make([]FullNode, 0)
+	for range ids {
+		select {
+		case n := <-nodeChan:
+			nodes = append(nodes, *n)
+		case <-errChan:
+			continue
+		}
+	}
+
+	encodedData, err := json.Marshal(nodes)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error marshalling nodes %v\n", err)
+	}
+
+	if _, err = w.Write(encodedData); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing mashaled nodes in response: %v\n", err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func HandlePaymentRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+
+	var req PaymentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error decoding payment body: %v\n", err)
 	}
 
-	payWrite := ms.MSGBCKT.Object(req.PaymentID).NewWriter(ctx)
+	payWrite := s.MSGBCKT.Object(req.PaymentID).NewWriter(ctx)
 	payWrite.Write(req.Payment)
 
 	if err := payWrite.Close(); err != nil {
@@ -121,7 +309,7 @@ func HandlePayment(w http.ResponseWriter, r *http.Request) {
 
 	title := "@" + req.Sender + "payed you!"
 
-	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
+	if _, err := s.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
@@ -160,10 +348,12 @@ func HandlePingRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	title := "@" + req.Message.SenderID + " pinged!"
-	body := req.Message.Text
+	title := "@" + req.SenderID + " pinged!"
+	body := req.Text
 
-	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
+	log.Print(tokens)
+
+	if _, err := s.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
@@ -174,8 +364,8 @@ func HandlePingRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error mutlicating message: %v\n", err)
 	}
 
-	if err := updateActivity(ctx, req.Message.SenderID); err != nil {
-		log.Printf("error updating activity for %s: %v\n", req.Message.SenderID, err)
+	if err := updateActivity(ctx, req.SenderID); err != nil {
+		log.Printf("error updating activity for %s: %v\n", req.SenderID, err)
 	}
 }
 
@@ -188,10 +378,10 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error decoding body: %v\n", err)
 	}
 
-	mediaWriter := ms.MSGBCKT.Object(req.Message.Media.Identifier).NewWriter(ctx)
-	mediaWriter.Write(req.Message.Media.Data)
+	mediaWriter := s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
+	mediaWriter.Write(req.Media.Data)
 
-	err := ms.RTDB.NewRef("Messages").Child(req.Message.MessageID).Set(ctx, req.Message.ToRTDB())
+	err := s.RTDB.NewRef("Messages").Child(req.Message.MessageID).Set(ctx, req.Message)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing snip to rtdb: %v\n", err)
@@ -202,9 +392,9 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error writing snip: %v\n", err)
 	}
 
-	if err := updateMediaMetadata(ctx, req.Message.Media.Identifier, &req.Message.Media.Metadata); err != nil {
-		if err := deleteMedia(ctx, req.Message.Media.Identifier); err != nil {
-			log.Printf("error deleting media at %s: %v\n", req.Message.Media.Identifier, err)
+	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
+		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
+			log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
 		}
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing snip: %v\n", err)
@@ -236,7 +426,7 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 	title := "@" + req.Message.SenderID + " pinged you!"
 	body := "&attachment"
 
-	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
+	if _, err := s.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
@@ -261,8 +451,8 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error decoding body: %v\n", err)
 	}
 
-	if req.Message.Media.Identifier != "" && !req.WithUpload {
-		if _, err := getMediaMetadata(ctx, req.Message.Media.Identifier); err != nil {
+	if req.Media.Identifier != "" && !req.WithUpload {
+		if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
 			w.WriteHeader(http.StatusNoContent)
 			log.Printf("we will need an upload for this message: %v\n", err)
 			return
@@ -270,11 +460,11 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var groupMediaWriter, mediaWriter *storage.Writer
-	groupMediaWriter = ms.MSGBCKT.Object(req.GroupMedia.Identifier).NewWriter(ctx)
+	groupMediaWriter = s.MSGBCKT.Object(req.GroupMedia.Identifier).NewWriter(ctx)
 	groupMediaWriter.Write(req.GroupMedia.Data)
 	if req.WithUpload {
-		mediaWriter = ms.MSGBCKT.Object(req.Message.Media.Identifier).NewWriter(ctx)
-		mediaWriter.Write(req.Message.Media.Data)
+		mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
+		mediaWriter.Write(req.Media.Data)
 
 	}
 
@@ -282,7 +472,7 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing group media: %v\n", err)
 		if err := updateMediaMetadata(ctx, req.GroupMedia.Identifier, &req.GroupMedia.Metadata); err != nil {
-			if err := deleteMedia(ctx, req.Message.Media.Identifier); err != nil {
+			if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
 				log.Printf("error deleting media at: %s, err = %v\n", req.GroupMedia.Identifier, err)
 			}
 			w.WriteHeader(http.StatusInternalServerError)
@@ -295,21 +485,26 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error closing media writer: %v\n", err)
 		}
-		if err := updateMediaMetadata(ctx, req.Message.Media.Identifier, &req.Message.Media.Metadata); err != nil {
-			if err := deleteMedia(ctx, req.Message.Media.Identifier); err != nil {
-				log.Printf("error deleting media at: %s, err = %v\n", req.Message.Media.Identifier, err)
+		if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
+			if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
+				log.Printf("error deleting media at: %s, err = %v\n", req.Media.Identifier, err)
 			}
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error updating media metadata: %v\n", err)
 		}
 	}
 
-	if _, err := ms.FS.Collection("Nodes").Doc(req.GroupID).Set(ctx, map[string]interface{}{
-		"id": req.GroupID,
-		"nm": req.GroupName,
-		"im": req.GroupMedia.Identifier,
-		"g":  append(req.Targets, req.Message.SenderID),
-	}); err != nil {
+	fullNode := FullNode{
+		Identifier: req.GroupID,
+		Name:       req.GroupName,
+		Image:      req.GroupMedia,
+		Group:      append(req.Targets, req.Message.SenderID),
+		Private:    req.Private,
+		Type:       "group",
+	}
+
+	fsNodesRef := s.FS.Collection("Nodes").Doc(req.GroupID)
+	if _, err := fsNodesRef.Set(ctx, *(fullNode.ToFireStoreNode())); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing group info to firestore: %v\n", err)
 	}
@@ -348,7 +543,7 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 		body = req.Message.Text
 	}
 
-	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
+	if _, err := s.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
@@ -362,6 +557,17 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 	if err := updateActivity(ctx, req.Message.SenderID); err != nil {
 		log.Printf("error updating activity for %s: %v\n", req.Message.SenderID, err)
 	}
+
+	marshalledFullNode, err := json.Marshal(fullNode)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error marshalling groupNode: %v\n", err)
+	}
+
+	if _, err := w.Write(marshalledFullNode); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing groupNode to response: %v\n", err)
+	}
 }
 
 func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
@@ -374,12 +580,10 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error decoding body: %v\n", err)
 	}
 
-	req.Targets = append(req.Targets, req.Message.SenderID)
+	msgRef := s.RTDB.NewRef("Messages").Child(req.Message.MessageID)
 
-	msgRef := ms.RTDB.NewRef("Messages").Child(req.Message.MessageID)
-
-	if req.Message.Media.Identifier != "" && !req.WithUpload {
-		if _, err := getMediaMetadata(ctx, req.Message.Media.Identifier); err != nil {
+	if req.Media.Identifier != "" && !req.WithUpload {
+		if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
 			w.WriteHeader(http.StatusNoContent)
 			log.Printf("we will need an upload for this message: %v\n", err)
 			return
@@ -413,23 +617,34 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 
 	var mediaWriter, mediaWriter2 *storage.Writer
 	if req.WithUpload {
-		mediaWriter = ms.MSGBCKT.Object(req.Message.Media.Identifier).NewWriter(ctx)
-		mediaWriter.Write(req.Message.Media.Data)
+		mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
+		mediaWriter.Write(req.Media.Data)
 	}
 
-	mediaWriter2 = ms.MSGBCKT.Object(req.Message.Root).NewWriter(ctx)
+	hyperchatImageID, err := hexSha256(ctx, decodedImBuf)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error generating hyperchatID from hyperchatImage: %v\n", err)
+	}
+
+	mediaWriter2 = s.MSGBCKT.Object(hyperchatImageID).NewWriter(ctx)
 	mediaWriter2.Write(decodedImBuf)
+
+	hcImageMD := map[string]string{
+		"o":   req.Message.SenderID,
+		"vid": "false",
+		"shr": "true",
+		"pto": "true",
+		"trv": "false",
+		"ar":  "1.0",
+		"ts":  strconv.FormatInt(time.Now().Unix(), 10),
+	}
 
 	if err := mediaWriter2.Close(); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing hyperchatMedia to storage: %v\n", err)
 	} else {
-		if err := updateMediaMetadata(ctx, req.Message.Root, &map[string]string{
-			"ppl": strings.Join(req.Targets, " ") + " " + req.Message.SenderID,
-			"nm":  wp[0],
-			"ln":  wp[1],
-			"ts":  strconv.FormatInt(time.Now().Unix(), 10),
-		}); err != nil {
+		if err := updateMediaMetadata(ctx, req.Message.Root, &hcImageMD); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error writing hyperchatMedia metadata to storage: %v\n", err)
 		}
@@ -440,16 +655,16 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error writing media: %v\n", err)
 		}
-		if err := updateMediaMetadata(ctx, req.Message.Media.Identifier, &req.Message.Media.Metadata); err != nil {
-			if err := deleteMedia(ctx, req.Message.Media.Identifier); err != nil {
-				log.Printf("error deleting media at %s: %v\n", req.Message.Media.Identifier, err)
+		if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
+			if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
+				log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
 			}
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error updating media metadata: %v\n", err)
 		}
 	}
 
-	if err := msgRef.Set(ctx, *req.Message.ToRTDB()); err != nil {
+	if err := msgRef.Set(ctx, req.Message); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing message to RTDB: %v\n", err)
 	}
@@ -476,9 +691,34 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	hyperchatNode := FullNode{
+		Name:       wp[0],
+		Lastname:   wp[1],
+		Identifier: req.Message.Root,
+		Group:      append(req.Targets, req.Message.SenderID),
+		Private:    true,
+		Image: Down4Media{
+			Data:       decodedImBuf,
+			Identifier: hyperchatImageID,
+			Metadata:   hcImageMD,
+		},
+	}
+
+	fsNodeRef := s.FS.Collection("Nodes").Doc(hyperchatNode.Identifier)
+	if _, err := fsNodeRef.Set(ctx, *(hyperchatNode.ToFireStoreNode())); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing hyperchat to firestore: %v\n", err)
+	}
+
+	marshalledHyperchatNode, err := json.Marshal(hyperchatNode)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error marshalling hyperchatNode: %v\n", err)
+	}
+
 	var body, title string
 	title = wp[0] + " " + wp[1]
-	if req.Message.Media.Identifier != "" {
+	if req.Media.Identifier != "" {
 		if req.Message.Text != "" {
 			body = "@" + req.Message.SenderID + "\n" + req.Message.Text + "\n" + "&attachment"
 		} else {
@@ -488,7 +728,7 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		body = "@" + req.Message.SenderID + "\n" + req.Message.Text
 	}
 
-	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
+	if _, err := s.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
@@ -502,6 +742,11 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 	if err := updateActivity(ctx, req.Message.SenderID); err != nil {
 		log.Printf("error updating activity for %s: %v\n", req.Message.SenderID, err)
 	}
+
+	if _, err := w.Write(marshalledHyperchatNode); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing marshalledHyperchatNode to response: %v\n", err)
+	}
 }
 
 func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
@@ -514,10 +759,10 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error decoding body: %v\n", err)
 	}
 
-	msgRef := ms.RTDB.NewRef("Messages").Child(req.Message.MessageID)
+	msgRef := s.RTDB.NewRef("Messages").Child(req.Message.MessageID)
 
-	if req.Message.Media.Identifier != "" && !req.WithUpload {
-		if _, err := getMediaMetadata(ctx, req.Message.Media.Identifier); err != nil {
+	if req.Media.Identifier != "" && !req.WithUpload {
+		if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
 			w.WriteHeader(http.StatusNoContent)
 			log.Printf("we will need an upload for this message: %v\n", err)
 			return
@@ -526,8 +771,8 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 
 	var mediaWriter *storage.Writer
 	if req.WithUpload {
-		mediaWriter = ms.MSGBCKT.Object(req.Message.Media.Identifier).NewWriter(ctx)
-		mediaWriter.Write(req.Message.Media.Data)
+		mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
+		mediaWriter.Write(req.Media.Data)
 	}
 
 	if mediaWriter != nil {
@@ -535,16 +780,16 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error writing media: %v\n", err)
 		}
-		if err := updateMediaMetadata(ctx, req.Message.Media.Identifier, &req.Message.Media.Metadata); err != nil {
-			if err := deleteMedia(ctx, req.Message.Media.Identifier); err != nil {
-				log.Printf("error deleting media at %s: %v\n", req.Message.Media.Identifier, err)
+		if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
+			if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
+				log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
 			}
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Fatalf("error updating media metadata: %v\n", err)
 		}
 	}
 
-	if err := msgRef.Set(ctx, *req.Message.ToRTDB()); err != nil {
+	if err := msgRef.Set(ctx, req.Message); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing message to RTDB: %v\n", err)
 	}
@@ -574,7 +819,7 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 	var body, title string
 	if req.GroupName != "" {
 		title = req.GroupName
-		if req.Message.Media.Identifier != "" {
+		if req.Media.Identifier != "" {
 			if req.Message.Text != "" {
 				body = "@" + req.Message.SenderID + "\n" + req.Message.Text + "\n" + "&attachment"
 			} else {
@@ -586,7 +831,7 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 
 	} else {
 		title = "@" + req.Message.SenderID
-		if req.Message.Media.Identifier != "" {
+		if req.Media.Identifier != "" {
 			if req.Message.Text != "" {
 				body = req.Message.Text + "\n" + "&attachment"
 			} else {
@@ -597,7 +842,7 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if _, err := ms.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
+	if _, err := s.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
@@ -656,7 +901,7 @@ func GetMediaMetadata(w http.ResponseWriter, r *http.Request) {
 }
 
 func getMessageMedia(ctx context.Context, mediaID string) (*Down4Media, error) {
-	obj := ms.MSGBCKT.Object(mediaID)
+	obj := s.MSGBCKT.Object(mediaID)
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
 		log.Fatalf("error getting metadata of media: %v\n", err)
@@ -681,7 +926,7 @@ func getMessageMedia(ctx context.Context, mediaID string) (*Down4Media, error) {
 }
 
 func deleteMedia(ctx context.Context, mediaID string) error {
-	if err := ms.MSGBCKT.Object(mediaID).Delete(ctx); err != nil {
+	if err := s.MSGBCKT.Object(mediaID).Delete(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -691,7 +936,7 @@ func getMessagingTokens(ctx context.Context, ids []string, ch chan *string, ech 
 	for _, id := range ids {
 		id_ := id
 		go func() {
-			userTokenRef := ms.RTDB.NewRef("Users/" + id_ + "/tkn/")
+			userTokenRef := s.RTDB.NewRef("Users/" + id_ + "/tkn/")
 			var token string
 			if err := userTokenRef.Get(ctx, &token); err != nil {
 				ech <- &err
@@ -703,7 +948,7 @@ func getMessagingTokens(ctx context.Context, ids []string, ch chan *string, ech 
 }
 
 func getMediaMetadata(ctx context.Context, mediaID string) (*map[string]string, error) {
-	metadata, err := ms.MSGBCKT.Object(mediaID).Attrs(ctx)
+	metadata, err := s.MSGBCKT.Object(mediaID).Attrs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -711,7 +956,7 @@ func getMediaMetadata(ctx context.Context, mediaID string) (*map[string]string, 
 }
 
 func updateMediaMetadata(ctx context.Context, mediaID string, md *map[string]string) error {
-	if _, err := ms.MSGBCKT.Object(mediaID).Update(ctx, storage.ObjectAttrsToUpdate{
+	if _, err := s.MSGBCKT.Object(mediaID).Update(ctx, storage.ObjectAttrsToUpdate{
 		Metadata: *md,
 	}); err != nil {
 		return err
@@ -720,18 +965,119 @@ func updateMediaMetadata(ctx context.Context, mediaID string, md *map[string]str
 }
 
 func updateActivity(ctx context.Context, uid string) error {
-	err := ms.RTDB.NewRef("Users/"+uid+"/ac").Set(ctx, time.Now().Unix())
+	err := s.RTDB.NewRef("Users/"+uid+"/ac").Set(ctx, time.Now().Unix())
 	return err
 }
 
 func pushEvent(ctx context.Context, objectID string, targets []string, ch chan bool, ech chan *error) {
 	for _, target := range targets {
 		target_ := target
-		dbRef := ms.RTDB.NewRef("Users").Child(target_).Child("M").Child(objectID)
+		dbRef := s.RTDB.NewRef("Users").Child(target_).Child("M").Child(objectID)
 		if err := dbRef.Set(ctx, ""); err != nil {
 			ech <- &err
 		} else {
 			ch <- true
 		}
 	}
+}
+
+func hexSha256(ctx context.Context, data []byte) (string, error) {
+	hash := sha256.New()
+	_, err := hash.Write(data)
+	if err != nil {
+		return "", err
+	}
+
+	hashed := hash.Sum(make([]byte, 0))
+
+	return hex.EncodeToString(hashed), nil
+}
+
+func isValidUsername(ctx context.Context, username string) (bool, error) {
+	ref := s.FS.Collection("Nodes").Doc(username)
+
+	snap, err := ref.Get(ctx)
+	if err != nil && status.Code(err) != codes.NotFound {
+		return false, err
+	}
+
+	return !snap.Exists(), nil
+}
+
+func uploadNodeMedia(ctx context.Context, media Down4Media) error {
+	obj := s.NDBCKT.Object(media.Identifier)
+	w := obj.NewWriter(ctx)
+	w.Write(media.Data)
+	if err := w.Close(); err != nil {
+		return err
+	}
+	obj.Update(ctx, storage.ObjectAttrsToUpdate{
+		Metadata: media.Metadata,
+	})
+	return nil
+}
+
+func getNode(ctx context.Context, id string, nodeChan chan *FullNode, errChan chan *error) {
+	var fsn FireStoreNode
+	snap, err := s.FS.Collection("Nodes").Doc(id).Get(ctx)
+	if err != nil {
+		errChan <- &err
+		log.Printf("error getting node id: %s from collection 'Nodes': %v\n", id, err)
+		return
+	}
+
+	if err := snap.DataTo(&fsn); err != nil {
+		errChan <- &err
+		log.Printf("error reading snapshot data into FireStoreNode for user: %s: %v\n", id, err)
+		return
+	}
+
+	d4media, err := getNodeMedia(ctx, fsn.ImageID)
+	if err != nil {
+		errChan <- &err
+		log.Printf("error reading image data from bucket reader: %v\n", err)
+		return
+	}
+
+	node := FullNode{
+		Identifier: fsn.Identifier,
+		Type:       fsn.Type,
+		Name:       fsn.Name,
+		Lastname:   fsn.Lastname,
+		Image:      *d4media,
+		Messages:   fsn.Messages,
+		Group:      fsn.Group,
+		Words:      fsn.Words,
+		Friends:    fsn.Friends,
+		Admins:     fsn.Admins,
+		Childs:     fsn.Childs,
+		Parents:    fsn.Parents,
+	}
+
+	nodeChan <- &node
+}
+
+func getNodeMedia(ctx context.Context, id string) (*Down4Media, error) {
+	obj := s.NDBCKT.Object(id)
+	rdr, err := obj.NewReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	mediaData, err := io.ReadAll(rdr)
+	if err != nil {
+		return nil, err
+	}
+
+	mediaAttrs, err := obj.Attrs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	down4Media := Down4Media{
+		Identifier: id,
+		Data:       mediaData,
+		Metadata:   mediaAttrs.Metadata,
+	}
+	return &down4Media, nil
 }

@@ -1,15 +1,97 @@
-package initialization
+package backend
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestHandleChatRequest(t *testing.T) {
+	cr := ChatRequest{
+		Targets: []string{"ronaldo"},
+		Message: Down4Message{
+			Type:      "chat",
+			MessageID: "thfdsafsdID",
+			SenderID:  "scott",
+			Text:      "Hello Satoshi Nakomoto",
+			Timestamp: time.Now().Unix(),
+		},
+	}
+
+	marsh, err := json.Marshal(cr)
+	if err != nil {
+		t.Errorf("error marshalling chat request: %v\n", err)
+	}
+	reader := bytes.NewReader(marsh)
+
+	req := httptest.NewRequest("POST", "/", reader)
+	rsp := httptest.NewRecorder()
+
+	HandleChatRequest(rsp, req)
+
+	if rsp.Code != 200 {
+		t.Errorf("error handleing chat request")
+	}
+}
+
+func TestHandlePingRequest(t *testing.T) {
+	pr := PingRequest{
+		Targets:  []string{"scott"},
+		Text:     "Hello scott",
+		SenderID: "down4",
+	}
+
+	marsh, err := json.Marshal(pr)
+	if err != nil {
+		log.Printf("error marshalling ping: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/", bytes.NewReader(marsh))
+	rsp := httptest.NewRecorder()
+
+	HandlePingRequest(rsp, req)
+
+	if rsp.Code != 200 {
+		t.Errorf("error handling ping request")
+	}
+}
+
+func TestHandleHyperchatRequest(t *testing.T) {
+	cr := HyperchatRequest{
+		Targets:    []string{"satoshi"},
+		WordPairs:  []string{"pink bow", "disk job"},
+		WithUpload: false,
+		Message: Down4Message{
+			Root:      "gjkdflj423kljfdsakl34j",
+			MessageID: "this is a message ID",
+			SenderID:  "scott",
+			Text:      "Hello satoshi nakomoto",
+			Timestamp: time.Now().Unix(),
+		},
+	}
+
+	marsh, err := json.Marshal(cr)
+	if err != nil {
+		t.Errorf("error marshalling chat request: %v\n", err)
+	}
+	reader := bytes.NewReader(marsh)
+
+	req := httptest.NewRequest("POST", "/", reader)
+	rsp := httptest.NewRecorder()
+
+	HandleHyperchatRequest(rsp, req)
+
+	if rsp.Code != 200 {
+		t.Errorf("error handleing hyperchat request")
+	}
+}
 
 func TestUsernameValidityHttp(t *testing.T) {
 
@@ -30,16 +112,15 @@ func TestUsernameValidityHttp(t *testing.T) {
 }
 
 func TestUserInitializationHttp(t *testing.T) {
-
 	im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
 	if err != nil {
 		t.Errorf("error reading file image for user init test: %v\n", err)
 	}
 
 	jeff := InitUserInfo{
-		Neuter:     "I am a neuter motherfuckers",
-		Secret:     "I am an important secret",
-		Token:      "I am a token bro",
+		Neuter:     "IAmANeuteMotherfuckers",
+		Secret:     "IAmASecret",
+		Token:      "IAmAToken",
 		Name:       "Craig",
 		Lastname:   "Wright",
 		Identifier: "satoshi",
@@ -76,7 +157,7 @@ func TestUserInitializationHttp(t *testing.T) {
 	fmt.Println("Must view the results manually, this test is always PASS")
 }
 
-func TestMoneyInitializationHttp(t *testing.T) {
+func TestMnemonicHttp(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 
@@ -95,5 +176,4 @@ func TestMoneyInitializationHttp(t *testing.T) {
 	}
 
 	fmt.Printf("Mnemonic: %v\n", string(byteMnemonic))
-
 }
