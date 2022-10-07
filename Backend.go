@@ -100,12 +100,15 @@ func IsValidUsername(w http.ResponseWriter, r *http.Request) {
 
 	username := string(buf)
 
-	var isValid bool
-	if isValid, err = isValidUsername(ctx, username); err != nil {
+	ref := s.FS.Collection("Nodes").Doc(username)
+
+	snap, err := ref.Get(ctx)
+	if err != nil && status.Code(err) != codes.NotFound {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error checking if username is valid: %v\n", err)
 	}
 
+	isValid := !snap.Exists()
 	if isValid {
 		w.WriteHeader(http.StatusOK)
 	} else {
@@ -991,17 +994,6 @@ func hexSha256(ctx context.Context, data []byte) (string, error) {
 	hashed := hash.Sum(make([]byte, 0))
 
 	return hex.EncodeToString(hashed), nil
-}
-
-func isValidUsername(ctx context.Context, username string) (bool, error) {
-	ref := s.FS.Collection("Nodes").Doc(username)
-
-	snap, err := ref.Get(ctx)
-	if err != nil && status.Code(err) != codes.NotFound {
-		return false, err
-	}
-
-	return !snap.Exists(), nil
 }
 
 func uploadNodeMedia(ctx context.Context, media Down4Media) error {
