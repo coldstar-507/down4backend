@@ -6,6 +6,17 @@ type Down4Media struct {
 	Metadata   map[string]string `json:"md"`
 }
 
+type MediaMetadata struct {
+	Owner       string `json:"o"`
+	AspectRatio string `json:"ar"`
+	PayToView   string `json:"ptv"`
+	PayToOwn    string `json:"pto"`
+	Shareable   string `json:"shr"`
+	IsVideo     string `json:"vid"`
+	Timestamp   string `json:"ts"`
+	Text        string `json:"txt"`
+}
+
 type Down4Message struct {
 	Type        string `json:"t"`
 	Root        string `json:"rt,omitempty"`
@@ -21,16 +32,16 @@ type Down4Message struct {
 }
 
 type PaymentRequest struct {
-	Sender    string   `json:"s"`
-	Targets   []string `json:"tr"`
-	Payment   []byte   `json:"pay"`
-	PaymentID string   `json:"id"`
+	Sender     string   `json:"s"`
+	Targets    []string `json:"tr"`
+	Payment    []byte   `json:"pay"`
+	Identifier string   `json:"id"`
 }
 
 type PingRequest struct {
 	Targets  []string `json:"tr"`
 	Text     string   `json:"txt"`
-	SenderID string   `json:"id"`
+	SenderID string   `json:"s"`
 }
 
 type SnipRequest struct {
@@ -40,26 +51,23 @@ type SnipRequest struct {
 }
 
 type ChatRequest struct {
-	GroupName  string       `json:"gn"`
-	Targets    []string     `json:"tr"`
-	Message    Down4Message `json:"msg"`
-	Media      Down4Media   `json:"m"`
-	WithUpload bool         `json:"wu"`
+	GroupName string       `json:"gn"`
+	Targets   []string     `json:"tr"`
+	Message   Down4Message `json:"msg"`
+	Media     Down4Media   `json:"m"`
 }
 
 type HyperchatRequest struct {
-	Targets    []string     `json:"tr"`
-	WordPairs  []string     `json:"wp"`
-	Message    Down4Message `json:"msg"`
-	Media      Down4Media   `json:"m"`
-	WithUpload bool         `json:"wu"`
+	Targets   []string     `json:"tr"`
+	WordPairs []string     `json:"wp"`
+	Message   Down4Message `json:"msg"`
+	Media     Down4Media   `json:"m"`
 }
 
 type GroupRequest struct {
 	Targets    []string     `json:"tr"`
 	Message    Down4Message `json:"msg"`
 	Media      Down4Media   `json:"m"`
-	WithUpload bool         `json:"wu"`
 	GroupID    string       `json:"id"`
 	GroupName  string       `json:"gn"`
 	GroupMedia Down4Media   `json:"gm"`
@@ -106,6 +114,7 @@ type FullNode struct {
 
 func (fn *FullNode) ToFireStoreNode() *FireStoreNode {
 	return &FireStoreNode{
+		Type:       fn.Type,
 		Name:       fn.Name,
 		Lastname:   fn.Lastname,
 		Identifier: fn.Identifier,
