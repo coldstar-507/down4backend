@@ -73,7 +73,7 @@ func TestHandlePaymentRequest(t *testing.T) {
 
 func TestHandleChatRequest(t *testing.T) {
 
-	wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\Capture.PNG")
+	wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\SigridUndset.jpg")
 	// im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
 	if err != nil {
 		t.Errorf("error reading file image for user init test: %v\n", err)
@@ -105,12 +105,12 @@ func TestHandleChatRequest(t *testing.T) {
 		Targets: []string{"scott"},
 		Media:   media,
 		Message: Down4Message{
-			// Root:      "ecad365d994a1d51eb858e0dba5e92cad8c5328e886f7f47a0b9bf182805be3a",
+			Root:      "5a7d78362edd5eab580536ebd5c04f2681c20f308a57853078218c4c1170ddbb",
 			Type:      "chat",
 			MessageID: randomID,
 			MediaID:   media.Identifier,
-			SenderID:  "itachi",
-			Text:      "Hello, I am Itachi, the older brother of Sasuke Uchiha. This guy here is really strong.",
+			SenderID:  "beast",
+			Text:      "Who doesn't like Sigrid Undset? She was a wonderful writer!",
 			Timestamp: time.Now().Unix(),
 		},
 	}
@@ -170,7 +170,7 @@ func TestHandleSnipRequest(t *testing.T) {
 		Targets: []string{"scott"},
 		Message: Down4Message{
 			MessageID: randomMessageID,
-			SenderID:  "helene",
+			SenderID:  "itachi",
 			Type:      "snip",
 			Timestamp: unixMilliseconds(),
 			MediaID:   randomMediaID,
@@ -215,8 +215,8 @@ func TestHandleHyperchatRequest(t *testing.T) {
 	root := sha256Hex(rb)
 
 	hr := HyperchatRequest{
-		Targets:   []string{"scott", "scorpion"},
-		WordPairs: []string{"school deck", "pound bride", "poor lamp", "chill herb", "speard salt", "paint dough"},
+		Targets:   []string{"scott", "scorpion", "helene"},
+		WordPairs: []string{"hell fee", "hip boot", "chill herb", "speard salt", "paint dough"},
 		Message: Down4Message{
 			Type:      "chat",
 			Root:      root,
@@ -270,9 +270,9 @@ func TestHandleGroupRequest(t *testing.T) {
 	t.Logf("Group root: %v\n", root)
 
 	gr := GroupRequest{
-		Targets:   []string{"beast", "scorpion", "caal", "scott"},
+		Targets:   []string{"beast", "scorpion", "caal", "scott", "wolf"},
 		GroupID:   root,
-		GroupName: "Weird Ass BSV Crew",
+		GroupName: "The Rats",
 		Private:   true,
 		GroupMedia: Down4Media{
 			Identifier: mediaID,
@@ -283,7 +283,7 @@ func TestHandleGroupRequest(t *testing.T) {
 			Root:      root,
 			MessageID: randomID,
 			Type:      "chat",
-			Text:      "Hello bsv guys, let's fucking do this",
+			Text:      "The rats are in town motherfuckers.",
 			SenderID:  "kurt",
 			Timestamp: unixMilliseconds(),
 		},

@@ -608,7 +608,7 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error encoding wordpairs for http request: %v\n", err)
 	}
 
-	imageGenRes, err := http.Post("http://localhost:8080", "application/json", bytes.NewReader(reqBody))
+	imageGenRes, err := http.Post("https://us-east1-down4-26ee1.cloudfunctions.net/imageGenerationRequest", "application/json", bytes.NewReader(reqBody))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error making imageGen request: %v\n", err)
