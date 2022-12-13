@@ -105,12 +105,12 @@ func TestHandleChatRequest(t *testing.T) {
 		Targets: []string{"scott"},
 		Media:   media,
 		Message: Down4Message{
-			Root:      "5a7d78362edd5eab580536ebd5c04f2681c20f308a57853078218c4c1170ddbb",
+			Root:      "a29f13efcc4b9cab1d5b7e8a5d785534c7a4ca202d1a657c74f4a75dc0e6da4b",
 			Type:      "chat",
 			MessageID: randomID,
 			MediaID:   media.Identifier,
 			SenderID:  "beast",
-			Text:      "Who doesn't like Sigrid Undset? She was a wonderful writer!",
+			Text:      "She was a wonderful writer.",
 			Timestamp: time.Now().Unix(),
 		},
 	}

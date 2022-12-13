@@ -613,6 +613,7 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error making imageGen request: %v\n", err)
 	}
+	defer imageGenRes.Body.Close()
 
 	jsonImGen := make(map[string]string)
 	if err := json.NewDecoder(imageGenRes.Body).Decode(&jsonImGen); err != nil {
