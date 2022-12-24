@@ -305,6 +305,7 @@ func HandlePaymentRequest(w http.ResponseWriter, r *http.Request) {
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
+			Body:  req.TextNote,
 		},
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

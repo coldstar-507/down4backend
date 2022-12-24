@@ -36,6 +36,7 @@ type PaymentRequest struct {
 	Targets    []string `json:"tr"`
 	Payment    []byte   `json:"pay"`
 	Identifier string   `json:"id"`
+	TextNote   string   `json:"txt"`
 }
 
 type PingRequest struct {
