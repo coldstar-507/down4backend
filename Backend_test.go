@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -73,28 +74,29 @@ func TestHandlePaymentRequest(t *testing.T) {
 
 func TestHandleChatRequest(t *testing.T) {
 
-	wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\SigridUndset.jpg")
-	// im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
-	if err != nil {
-		t.Errorf("error reading file image for user init test: %v\n", err)
-	}
+	// wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\SigridUndset.jpg")
+	// // im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
+	// if err != nil {
+	// 	t.Errorf("error reading file image for user init test: %v\n", err)
+	// }
 
-	mediaID := sha256Hex(wim)
+	// mediaID := sha256Hex(wim)
 
-	media := Down4Media{
-		Identifier: mediaID,
-		Data:       wim,
-		Metadata: map[string]string{
-			"o":   "scott",
-			"ts":  strconv.FormatInt(time.Now().Unix(), 10),
-			"vid": "false",
-			"shr": "true",
-			"trv": "false",
-			"ptv": "false",
-			"pto": "false",
-			"ar":  "1.0",
-		},
-	}
+	// media := Down4Media{
+	// 	Identifier: mediaID,
+	// 	Data:       base64.StdEncoding.EncodeToString(wim),
+	// 	Metadata: map[string]string{
+	// 		"o":   "scott",
+	// 		"ts":  strconv.FormatInt(unixMilliseconds(), 10),
+	// 		"vid": "false",
+	// 		"shr": "true",
+	// 		"trv": "false",
+	// 		"pto": "false",
+	// 		"ptv": "false",
+	// 		"sqr": "false",
+	// 		"ar":  "1.0",
+	// 	},
+	// }
 
 	rb := randomBuffer(16)
 	randomID := hex.EncodeToString(rb)
@@ -103,12 +105,12 @@ func TestHandleChatRequest(t *testing.T) {
 
 	cr := ChatRequest{
 		Targets: []string{"scott"},
-		Media:   media,
+		// Media:   media,
 		Message: Down4Message{
 			Root:      "a29f13efcc4b9cab1d5b7e8a5d785534c7a4ca202d1a657c74f4a75dc0e6da4b",
 			Type:      "chat",
 			MessageID: randomID,
-			MediaID:   media.Identifier,
+			// MediaID:   media.Identifier,
 			SenderID:  "beast",
 			Text:      "She was a wonderful writer.",
 			Timestamp: time.Now().Unix(),
@@ -155,41 +157,42 @@ func TestHandlePingRequest(t *testing.T) {
 
 func TestHandleSnipRequest(t *testing.T) {
 
-	wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\Capture.PNG")
-	// im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
-	if err != nil {
-		t.Errorf("error reading file image for user init test: %v\n", err)
-	}
+	// wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\Capture.PNG")
+	// // im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
+	// if err != nil {
+	// 	t.Errorf("error reading file image for user init test: %v\n", err)
+	// }
 
-	rb := randomBuffer(16)
-	rb2 := randomBuffer(16)
-	randomMediaID := hex.EncodeToString(rb)
-	randomMessageID := hex.EncodeToString(rb2)
+	// rb := randomBuffer(16)
+	// rb2 := randomBuffer(16)
+	// randomMediaID := hex.EncodeToString(rb)
+	// randomMessageID := hex.EncodeToString(rb2)
 
 	sr := SnipRequest{
 		Targets: []string{"scott"},
-		Message: Down4Message{
-			MessageID: randomMessageID,
-			SenderID:  "itachi",
-			Type:      "snip",
-			Timestamp: unixMilliseconds(),
-			MediaID:   randomMediaID,
-		},
-		Media: Down4Media{
-			Data:       wim,
-			Identifier: randomMediaID,
-			Metadata: map[string]string{
-				"o":   "helene",
-				"ts":  strconv.FormatInt(unixMilliseconds(), 10),
-				"vid": "false",
-				"shr": "false",
-				"txt": "This guy is extremely powerful",
-				"trv": "false",
-				"ptv": "false",
-				"pto": "false",
-				"ar":  "1.0",
-			},
-		},
+		// Message: Down4Message{
+		// 	MessageID: randomMessageID,
+		// 	SenderID:  "itachi",
+		// 	Type:      "snip",
+		// 	Timestamp: unixMilliseconds(),
+		// 	MediaID:   randomMediaID,
+		// },
+		// Media: Down4Media{
+		// 	Data:       base64.StdEncoding.EncodeToString(wim),
+		// 	Identifier: randomMediaID,
+		// 	Metadata: map[string]string{
+		// 		"o":   "scott",
+		// 		"ts":  strconv.FormatInt(unixMilliseconds(), 10),
+		// 		"vid": "false",
+		// 		"shr": "true",
+		// 		"trv": "false",
+		// 		"pto": "false",
+		// 		"ptv": "false",
+		// 		"sqr": "false",
+		// 		"ar":  "1.0",
+		// 		"txt": "This guy is extremely powerful",
+		// 	},
+		// },
 	}
 
 	marsh, err := json.Marshal(sr)
@@ -276,7 +279,7 @@ func TestHandleGroupRequest(t *testing.T) {
 		Private:   true,
 		GroupMedia: Down4Media{
 			Identifier: mediaID,
-			Data:       gm,
+			Data:       base64.StdEncoding.EncodeToString(gm),
 			Metadata:   mediaMD,
 		},
 		Message: Down4Message{
@@ -330,6 +333,8 @@ func TestUserInitializationHttp(t *testing.T) {
 		t.Errorf("error reading file image for user init test: %v\n", err)
 	}
 
+	randomID := nByteBase64ID(16)
+
 	jeff := InitUserInfo{
 		Neuter:     "IAmANeuteMotherfuckers",
 		Secret:     "IAmASecret",
@@ -338,11 +343,11 @@ func TestUserInitializationHttp(t *testing.T) {
 		Lastname:   "Carlsen",
 		Identifier: "cat",
 		Image: Down4Media{
-			Identifier: "catMagnusCarlsen",
-			Data:       wim,
+			Identifier: randomID,
+			Data:       base64.StdEncoding.EncodeToString(wim),
 			Metadata: map[string]string{
 				"o":   "cat",
-				"ts":  "90409328",
+				"ts":  strconv.FormatInt(unixMilliseconds(), 10),
 				"trv": "false",
 				"ptv": "false",
 				"shr": "true",
@@ -423,9 +428,14 @@ func TestGetMessageMedia(t *testing.T) {
 		t.Errorf("error decoding message media: %v\n", err)
 	}
 
+	mediaData, err := base64.StdEncoding.DecodeString(d4media.Data)
+	if err != nil {
+		t.Errorf("error decoding media data from base64: %v\n", mediaData)
+	}
+
 	if rsp.Code == 200 {
 		t.Logf("\ngot media\nid: %v\nmd: %v\n", d4media.Identifier, d4media.Metadata)
-		os.WriteFile("C:\\Users\\coton\\Desktop\\cat.png", d4media.Data, fs.ModeDevice)
+		os.WriteFile("C:\\Users\\coton\\Desktop\\cat.png", mediaData, fs.ModeDevice)
 	} else {
 		t.Errorf("error getting message media")
 	}

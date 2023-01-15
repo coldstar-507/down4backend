@@ -3,9 +3,8 @@ package backend
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -35,6 +34,8 @@ type Server struct {
 	MSGR    *messaging.Client
 	URLOPTS *storage.SignedURLOptions
 }
+
+type EventType string
 
 var s Server
 
@@ -371,45 +372,59 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error decoding body: %v\n", err)
 	}
 
-	var mediaWriter *storage.Writer
-	if req.Media.Identifier != "" {
-		mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
-		if _, err := mediaWriter.Write(req.Media.Data); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error writing snip media to message bucket: %v\n", err)
-		}
-		log.Printf("uploaded %v bytes of date no problem!\n", len(req.Media.Data))
-	} else {
-		log.Printf("We are not uploading any media")
-	}
+	// mediaData, err := base64.StdEncoding.DecodeString(req.Media.Data)
+	// if err != nil {
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	log.Fatalf("error decoding base64 media data to bytes: %v\n", err)
+	// }
 
-	err := s.RTDB.NewRef("Messages").Child(req.Message.MessageID).Set(ctx, req.Message)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error writing snip to rtdb: %v\n", err)
-	}
+	// var mediaWriter *storage.Writer
+	// if req.Media.Identifier != "" {
+	// 	mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
+	// 	if _, err := mediaWriter.Write(mediaData); err != nil {
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error writing snip media to message bucket: %v\n", err)
+	// 	}
+	// 	log.Printf("uploaded %v bytes of date no problem!\n", len(req.Media.Data))
+	// } else {
+	// 	log.Printf("We are not uploading any media")
+	// }
 
-	if mediaWriter != nil {
-		if err := mediaWriter.Close(); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error writing snip: %v\n", err)
-		}
-		if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
-			if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
-				log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error writing snip: %v\n", err)
-		}
-	}
+	// err = s.RTDB.NewRef("Messages").Child(req.Message.MessageID).Set(ctx, req.Message)
+	// if err != nil {
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	log.Fatalf("error writing snip to rtdb: %v\n", err)
+	// }
+
+	// if mediaWriter != nil {
+	// 	if err := mediaWriter.Close(); err != nil {
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error writing snip: %v\n", err)
+	// 	}
+	// 	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
+	// 		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
+	// 			log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
+	// 		}
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error writing snip: %v\n", err)
+	// 	}
+	// }
 
 	tknChan := make(chan *string, len(req.Targets))
 	errChan := make(chan *error, len(req.Targets))
 	errChan2 := make(chan *error, len(req.Targets))
 	ackChan := make(chan bool, len(req.Targets))
 
+	var payload, title string = req.Sender, "@" + req.Sender + " pinged "
+	if len(req.Root) > 0 {
+		payload = payload + "@" + req.Root
+		title = title + req.GroupName + "!"
+	} else {
+		title = title + "you!"
+	}
+
 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2)
+	go pushEvent(ctx, req.MediaID, req.Targets, ackChan, errChan2, payload)
 
 	tokens := make([]string, 0)
 
@@ -426,22 +441,19 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	title := "@" + req.Message.SenderID + " pinged you!"
-	body := "&attachment"
-
 	if _, err := s.MSGR.SendMulticast(ctx, &messaging.MulticastMessage{
 		Tokens: tokens,
 		Notification: &messaging.Notification{
 			Title: title,
-			Body:  body,
+			Body:  "&attachment",
 		},
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error mutlicating message: %v\n", err)
 	}
 
-	if err := updateActivity(ctx, req.Message.SenderID); err != nil {
-		log.Printf("error updating activity for %s: %v\n", req.Message.SenderID, err)
+	if err := updateActivity(ctx, req.Sender); err != nil {
+		log.Printf("error updating activity for %s: %v\n", req.Sender, err)
 	}
 }
 
@@ -455,24 +467,35 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// this means, we are sending a media, without the upload
-	if req.Message.MediaID != "" && req.Media.Identifier == "" {
-		if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
-			w.WriteHeader(http.StatusNoContent)
-			log.Printf("we will need an upload for this message: %v\n", err)
-			return
-		}
-	}
+	// if req.Message.MediaID != "" && req.Media.Identifier == "" {
+	// 	if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
+	// 		w.WriteHeader(http.StatusNoContent)
+	// 		log.Printf("we will need an upload for this message: %v\n", err)
+	// 		return
+	// 	}
+	// }
 
 	groupMediaObject := s.NDBCKT.Object(req.GroupMedia.Identifier)
 	groupMediaWriter := groupMediaObject.NewWriter(ctx)
-	groupMediaWriter.Write(req.GroupMedia.Data)
 
-	var mediaWriter *storage.Writer
-	if req.Media.Identifier != "" {
-		mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
-		mediaWriter.Write(req.Media.Data)
-
+	groupMediaData, err := base64.StdEncoding.DecodeString(req.GroupMedia.Data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error decoding groupMediaData from base64: %v\n", err)
 	}
+
+	groupMediaWriter.Write(groupMediaData)
+
+	// var mediaWriter *storage.Writer
+	// if req.Media.Identifier != "" {
+	// 	mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
+	// 	mediaData, err := base64.StdEncoding.DecodeString(req.Media.Data)
+	// 	if err != nil {
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error decoding media from base64: %v\n", err)
+	// 	}
+	// 	mediaWriter.Write(mediaData)
+	// }
 
 	if err := groupMediaWriter.Close(); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -487,19 +510,19 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error updating media metadata: %v\n", err)
 	}
 
-	if mediaWriter != nil {
-		if err := mediaWriter.Close(); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error closing media writer: %v\n", err)
-		}
-		if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
-			if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
-				log.Printf("error deleting media at: %s, err = %v\n", req.Media.Identifier, err)
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error updating media metadata: %v\n", err)
-		}
-	}
+	// if mediaWriter != nil {
+	// 	if err := mediaWriter.Close(); err != nil {
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error closing media writer: %v\n", err)
+	// 	}
+	// 	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
+	// 		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
+	// 			log.Printf("error deleting media at: %s, err = %v\n", req.Media.Identifier, err)
+	// 		}
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error updating media metadata: %v\n", err)
+	// 	}
+	// }
 
 	fullNode := FullNode{
 		Identifier: req.GroupID,
@@ -527,7 +550,7 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 	errChan2 := make(chan *error, len(req.Targets))
 	ackChan := make(chan bool, len(req.Targets))
 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2)
+	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2, "m")
 
 	tokens := make([]string, 0)
 
@@ -595,13 +618,13 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 
 	msgRef := s.RTDB.NewRef("Messages").Child(req.Message.MessageID)
 
-	if req.Message.MediaID != "" && req.Media.Identifier == "" {
-		if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
-			w.WriteHeader(http.StatusNoContent)
-			log.Printf("we will need an upload for this message: %v\n", err)
-			return
-		}
-	}
+	// if req.Message.MediaID != "" && req.Media.Identifier == "" {
+	// 	if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
+	// 		w.WriteHeader(http.StatusNoContent)
+	// 		log.Printf("we will need an upload for this message: %v\n", err)
+	// 		return
+	// 	}
+	// }
 
 	reqBody, err := json.Marshal(req.WordPairs)
 	if err != nil {
@@ -623,35 +646,42 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	wp := strings.Split(jsonImGen["prompt"], " ")
 
-	decodedImBuf := make([]byte, base64.StdEncoding.DecodedLen(len(jsonImGen["image"])))
-	if _, err := base64.StdEncoding.Decode(decodedImBuf, []byte(jsonImGen["image"])); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error reading hyperchat image body to Json: %v\n", err)
-	}
+	// decodedImBuf := make([]byte, base64.StdEncoding.DecodedLen(len(jsonImGen["image"])))
+	// if _, err := base64.StdEncoding.Decode(decodedImBuf, []byte(jsonImGen["image"])); err != nil {
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	log.Fatalf("error reading hyperchat image body to Json: %v\n", err)
+	// }
 
-	var mediaWriter, mediaWriter2 *storage.Writer
-	if req.Media.Identifier != "" {
-		mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
-		mediaWriter.Write(req.Media.Data)
-	}
+	// mediaWriter
+	var mediaWriter2 *storage.Writer
+	// if req.Media.Identifier != "" {
+	// 	mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
+	// 	mediaData, err := base64.StdEncoding.DecodeString(req.Media.Data)
+	// 	if err != nil {
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error decoding media from base64: %v\n", err)
+	// 	}
+	// 	mediaWriter.Write(mediaData)
+	// }
 
-	hyperchatImageID, err := hexSha256(ctx, decodedImBuf)
+	hyperchatImageID := nByteBase64ID(16)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error generating hyperchatID from hyperchatImage: %v\n", err)
 	}
 
 	mediaWriter2 = s.NDBCKT.Object(hyperchatImageID).NewWriter(ctx)
-	mediaWriter2.Write(decodedImBuf)
+	mediaData2, err := base64.StdEncoding.DecodeString(jsonImGen["image"])
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error decoding media from base64: %v\n", err)
+	}
+	mediaWriter2.Write(mediaData2)
 
 	hcImageMD := map[string]string{
-		"o":   req.Message.SenderID,
-		"vid": "false",
-		"shr": "true",
-		"pto": "true",
-		"trv": "false",
-		"ar":  "1.0",
-		"ts":  strconv.FormatInt(unixMilliseconds(), 10),
+		"o":  req.Message.SenderID,
+		"ar": "1.0",
+		"ts": strconv.FormatInt(unixMilliseconds(), 10),
 	}
 
 	if err := mediaWriter2.Close(); err != nil {
@@ -665,20 +695,20 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if mediaWriter != nil {
-		if err := mediaWriter.Close(); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error writing media: %v\n", err)
-		}
+	// if mediaWriter != nil {
+	// 	if err := mediaWriter.Close(); err != nil {
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error writing media: %v\n", err)
+	// 	}
 
-		if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
-			if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
-				log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error updating media metadata: %v\n", err)
-		}
-	}
+	// 	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
+	// 		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
+	// 			log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
+	// 		}
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error updating media metadata: %v\n", err)
+	// 	}
+	// }
 
 	if err := msgRef.Set(ctx, req.Message); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -690,7 +720,7 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 	errChan2 := make(chan *error, len(req.Targets))
 	ackChan := make(chan bool, len(req.Targets))
 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2)
+	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2, "m")
 
 	tokens := make([]string, 0)
 
@@ -715,9 +745,13 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		Group:      append(req.Targets, req.Message.SenderID),
 		Private:    true,
 		Image: Down4Media{
-			Data:       decodedImBuf,
+			Data:       jsonImGen["image"],
 			Identifier: hyperchatImageID,
-			Metadata:   hcImageMD,
+			Metadata: map[string]string{
+				"o":  req.Message.SenderID,
+				"ts": strconv.FormatInt(unixMilliseconds(), 10),
+				"ar": "1.0",
+			},
 		},
 	}
 
@@ -735,7 +769,7 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 
 	var body, title string
 	title = wp[0] + " " + wp[1]
-	if req.Media.Identifier != "" {
+	if req.Message.MediaID != "" {
 		if req.Message.Text != "" {
 			body = "@" + req.Message.SenderID + "\n" + req.Message.Text + "\n" + "&attachment"
 		} else {
@@ -778,33 +812,38 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 
 	msgRef := s.RTDB.NewRef("Messages").Child(req.Message.MessageID)
 
-	if req.Message.MediaID != "" && req.Media.Identifier == "" {
-		if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
-			w.WriteHeader(http.StatusNoContent)
-			log.Printf("we will need an upload for this message: %v\n", err)
-			return
-		}
-	}
+	// if req.Message.MediaID != "" && req.Media.Identifier == "" {
+	// 	if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
+	// 		w.WriteHeader(http.StatusNoContent)
+	// 		log.Printf("we will need an upload for this message: %v\n", err)
+	// 		return
+	// 	}
+	// }
 
-	var mediaWriter *storage.Writer
-	if req.Media.Identifier != "" {
-		mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
-		mediaWriter.Write(req.Media.Data)
-	}
+	// var mediaWriter *storage.Writer
+	// if req.Media.Identifier != "" {
+	// 	mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
+	// 	mediaData, err := base64.StdEncoding.DecodeString(req.Media.Data)
+	// 	if err != nil {
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error decoding image base64 data: %v\n", err)
+	// 	}
+	// 	mediaWriter.Write(mediaData)
+	// }
 
-	if mediaWriter != nil {
-		if err := mediaWriter.Close(); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error writing media: %v\n", err)
-		}
-		if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
-			if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
-				log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
-			}
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Fatalf("error updating media metadata: %v\n", err)
-		}
-	}
+	// if mediaWriter != nil {
+	// 	if err := mediaWriter.Close(); err != nil {
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error writing media: %v\n", err)
+	// 	}
+	// 	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
+	// 		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
+	// 			log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
+	// 		}
+	// 		w.WriteHeader(http.StatusInternalServerError)
+	// 		log.Fatalf("error updating media metadata: %v\n", err)
+	// 	}
+	// }
 
 	if err := msgRef.Set(ctx, req.Message); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -816,7 +855,7 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 	errChan2 := make(chan *error, len(req.Targets))
 	ackChan := make(chan bool, len(req.Targets))
 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)
-	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2)
+	go pushEvent(ctx, req.Message.MessageID, req.Targets, ackChan, errChan2, "m")
 
 	tokens := make([]string, 0)
 
@@ -836,7 +875,7 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 	var body, title string
 	if req.GroupName != "" {
 		title = req.GroupName
-		if req.Media.Identifier != "" {
+		if req.Message.MediaID != "" {
 			if req.Message.Text != "" {
 				body = "@" + req.Message.SenderID + "\n" + req.Message.Text + "\n" + "&attachment"
 			} else {
@@ -848,7 +887,7 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 
 	} else {
 		title = "@" + req.Message.SenderID
-		if req.Media.Identifier != "" {
+		if req.Message.MediaID != "" {
 			if req.Message.Text != "" {
 				body = req.Message.Text + "\n" + "&attachment"
 			} else {
@@ -883,7 +922,7 @@ func GetMessageMedia(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error reading body bytes: %v\n", err)
 	}
 	mediaID := string(bodyBytes)
-	d4Media, err := getMessageMedia(ctx, mediaID)
+	d4Media, err := getMediaWithData(ctx, s.MSGBCKT, mediaID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error getting message media: %v\n", err)
@@ -946,8 +985,8 @@ func GetPayment(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getMessageMedia(ctx context.Context, mediaID string) (*Down4Media, error) {
-	obj := s.MSGBCKT.Object(mediaID)
+func getMediaWithData(ctx context.Context, hdl *storage.BucketHandle, mediaID string) (*Down4Media, error) {
+	obj := hdl.Object(mediaID)
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
 		log.Fatalf("error getting metadata of media: %v\n", err)
@@ -963,20 +1002,21 @@ func getMessageMedia(ctx context.Context, mediaID string) (*Down4Media, error) {
 		log.Fatalf("error reading media: %v\n", err)
 		return nil, err
 	}
+
 	down4Media := Down4Media{
 		Identifier: mediaID,
-		Data:       mediaData,
+		Data:       base64.StdEncoding.EncodeToString(mediaData),
 		Metadata:   attrs.Metadata,
 	}
 	return &down4Media, nil
 }
 
-func deleteMedia(ctx context.Context, mediaID string) error {
-	if err := s.MSGBCKT.Object(mediaID).Delete(ctx); err != nil {
-		return err
-	}
-	return nil
-}
+// func deleteMedia(ctx context.Context, mediaID string) error {
+// 	if err := s.MSGBCKT.Object(mediaID).Delete(ctx); err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func getMessagingTokens(ctx context.Context, ids []string, ch chan *string, ech chan *error) {
 	for _, id := range ids {
@@ -1001,25 +1041,25 @@ func getMediaMetadata(ctx context.Context, mediaID string) (*map[string]string, 
 	return &metadata.Metadata, nil
 }
 
-func updateMediaMetadata(ctx context.Context, mediaID string, md *map[string]string) error {
-	if _, err := s.MSGBCKT.Object(mediaID).Update(ctx, storage.ObjectAttrsToUpdate{
-		Metadata: *md,
-	}); err != nil {
-		return err
-	}
-	return nil
-}
+// func updateMediaMetadata(ctx context.Context, mediaID string, md *map[string]string) error {
+// 	if _, err := s.MSGBCKT.Object(mediaID).Update(ctx, storage.ObjectAttrsToUpdate{
+// 		Metadata: *md,
+// 	}); err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func updateActivity(ctx context.Context, uid string) error {
 	err := s.RTDB.NewRef("Users/"+uid+"/ac").Set(ctx, unixMilliseconds())
 	return err
 }
 
-func pushEvent(ctx context.Context, objectID string, targets []string, ch chan bool, ech chan *error) {
+func pushEvent(ctx context.Context, objectID string, targets []string, ch chan bool, ech chan *error, payload string) {
 	for _, target := range targets {
 		target_ := target
 		dbRef := s.RTDB.NewRef("Users").Child(target_).Child("M").Child(objectID)
-		if err := dbRef.Set(ctx, ""); err != nil {
+		if err := dbRef.Set(ctx, payload); err != nil {
 			ech <- &err
 		} else {
 			ch <- true
@@ -1039,21 +1079,16 @@ func pushPay(ctx context.Context, objectID string, targets []string, ch chan boo
 	}
 }
 
-func hexSha256(ctx context.Context, data []byte) (string, error) {
-	hash := sha256.New()
-	if _, err := hash.Write(data); err != nil {
-		return "", err
-	}
-
-	hashed := hash.Sum(make([]byte, 0))
-
-	return hex.EncodeToString(hashed), nil
-}
-
 func uploadNodeMedia(ctx context.Context, media Down4Media) error {
 	obj := s.NDBCKT.Object(media.Identifier)
 	w := obj.NewWriter(ctx)
-	w.Write(media.Data)
+
+	mediadata, err := base64.StdEncoding.DecodeString(media.Data)
+	if err != nil {
+		return err
+	}
+
+	w.Write(mediadata)
 	if err := w.Close(); err != nil {
 		return err
 	}
@@ -1078,7 +1113,7 @@ func getNode(ctx context.Context, id string, nodeChan chan *FullNode, errChan ch
 		return
 	}
 
-	d4media, err := getNodeMedia(ctx, fsn.ImageID)
+	d4media, err := getMediaWithData(ctx, s.NDBCKT, fsn.ImageID)
 	if err != nil {
 		errChan <- &err
 		log.Printf("error reading image data from bucket reader: %v\n", err)
@@ -1104,31 +1139,67 @@ func getNode(ctx context.Context, id string, nodeChan chan *FullNode, errChan ch
 	nodeChan <- &node
 }
 
-func getNodeMedia(ctx context.Context, id string) (*Down4Media, error) {
-	obj := s.NDBCKT.Object(id)
-	rdr, err := obj.NewReader(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	mediaData, err := io.ReadAll(rdr)
-	if err != nil {
-		return nil, err
-	}
-
-	mediaAttrs, err := obj.Attrs(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	down4Media := Down4Media{
-		Identifier: id,
-		Data:       mediaData,
-		Metadata:   mediaAttrs.Metadata,
-	}
-	return &down4Media, nil
-}
-
 func unixMilliseconds() int64 {
 	return time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
+
+func nByteBase64ID(n int) string {
+	buf := make([]byte, n)
+	rand.Read(buf)
+	return base64.StdEncoding.EncodeToString(buf)
+}
+
+// func hexSha256(ctx context.Context, data []byte) (string, error) {
+// 	hash := sha256.New()
+// 	if _, err := hash.Write(data); err != nil {
+// 		return "", err
+// 	}
+
+// 	hashed := hash.Sum(make([]byte, 0))
+
+// 	return hex.EncodeToString(hashed), nil
+// }
+
+// func getNodeMedia(ctx context.Context, id string) (*Down4MediaInfo, error) {
+// 	obj := s.NDBCKT.Object(id)
+// 	rdr, err := obj.NewReader(ctx)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	mediaData, err := io.ReadAll(rdr)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	mediaAttrs, err := obj.Attrs(ctx)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	metadata := mediaAttrs.Metadata
+// 	var ar float64
+// 	var vid, trv, shr, ptv, pto bool
+// 	var ts int64
+// 	ar, _ = strconv.ParseFloat(metadata["ar"], 64)
+// 	vid, _ = strconv.ParseBool(metadata["vid"])
+// 	trv, _ = strconv.ParseBool(metadata["trv"])
+// 	shr, _ = strconv.ParseBool(metadata["shr"])
+// 	ptv, _ = strconv.ParseBool(metadata["ptv"])
+// 	pto, _ = strconv.ParseBool(metadata["pto"])
+// 	ts, _ = strconv.ParseInt(metadata["ts"], 10, 64)
+
+// 	down4Media := Down4MediaInfo{
+// 		Identifier:  id,
+// 		Data:        base64.StdEncoding.EncodeToString(mediaData),
+// 		AspectRatio: ar,
+// 		IsVideo:     vid,
+// 		ToReverse:   trv,
+// 		Shareable:   shr,
+// 		PayToView:   ptv,
+// 		PayToOwn:    pto,
+// 		Timestamp:   ts,
+// 		Text:        metadata["txt"],
+// 	}
+// 	return &down4Media, nil
+// }

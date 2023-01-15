@@ -2,20 +2,39 @@ package backend
 
 type Down4Media struct {
 	Identifier string            `json:"id"`
-	Data       []byte            `json:"d"`
+	Data       string            `json:"d,omitempty"`
+	Thumbnail  string            `json:"tn,omitempty"`
+	NetworkURL string            `json:"nw,omitempty"`
 	Metadata   map[string]string `json:"md"`
 }
 
-type MediaMetadata struct {
-	Owner       string `json:"o"`
-	AspectRatio string `json:"ar"`
-	PayToView   string `json:"ptv"`
-	PayToOwn    string `json:"pto"`
-	Shareable   string `json:"shr"`
-	IsVideo     string `json:"vid"`
-	Timestamp   string `json:"ts"`
-	Text        string `json:"txt"`
-}
+// func (m Down4Media) Metadata() *map[string]string {
+// 	return &map[string]string{
+// 		"o":   m.Owner,
+// 		"id":  m.Identifier,
+// 		"ts":  strconv.FormatInt(m.Timestamp, 10),
+// 		"ar":  strconv.FormatFloat(m.AspectRatio, 'f', 4, 32),
+// 		"vid": strconv.FormatBool(m.IsVideo),
+// 		"trv": strconv.FormatBool(m.IsReversed),
+// 		"shr": strconv.FormatBool(m.IsShareable),
+// 		"ptv": strconv.FormatBool(m.IsPaidToView),
+// 		"sqr": strconv.FormatBool(m.IsSquared),
+// 		"pto": strconv.FormatBool(m.IsPaiedToOwn),
+// 		"txt": m.Text,
+// 	}
+// }
+
+// type MediaMetadata struct {
+// 	Owner       string `json:"o"`
+// 	AspectRatio string `json:"ar"`
+// 	IsPayToView string `json:"ptv"`
+// 	IsPayToOwn  string `json:"pto"`
+// 	IsShareable string `json:"shr"`
+// 	IsSquare    string `json:"sqr"`
+// 	IsVideo     string `json:"vid"`
+// 	Timestamp   string `json:"ts"`
+// 	Text        string `json:"txt"`
+// }
 
 type Down4Message struct {
 	Type        string `json:"t"`
@@ -46,29 +65,28 @@ type PingRequest struct {
 }
 
 type SnipRequest struct {
-	Targets []string     `json:"tr"`
-	Message Down4Message `json:"msg"`
-	Media   Down4Media   `json:"m"`
+	Sender    string   `json:"s"`
+	MediaID   string   `json:"m"`
+	Targets   []string `json:"tr"`
+	Root      string   `json:"rt"`
+	GroupName string   `json:"gn"`
 }
 
 type ChatRequest struct {
 	GroupName string       `json:"gn"`
 	Targets   []string     `json:"tr"`
 	Message   Down4Message `json:"msg"`
-	Media     Down4Media   `json:"m"`
 }
 
 type HyperchatRequest struct {
 	Targets   []string     `json:"tr"`
 	WordPairs []string     `json:"wp"`
 	Message   Down4Message `json:"msg"`
-	Media     Down4Media   `json:"m"`
 }
 
 type GroupRequest struct {
 	Targets    []string     `json:"tr"`
 	Message    Down4Message `json:"msg"`
-	Media      Down4Media   `json:"m"`
 	GroupID    string       `json:"id"`
 	GroupName  string       `json:"gn"`
 	GroupMedia Down4Media   `json:"gm"`
