@@ -35,8 +35,6 @@ type Server struct {
 	URLOPTS *storage.SignedURLOptions
 }
 
-type EventType string
-
 var s Server
 
 func init() {
