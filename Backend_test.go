@@ -104,15 +104,14 @@ func TestHandleChatRequest(t *testing.T) {
 	t.Logf("randomID: %v\n", randomID)
 
 	cr := ChatRequest{
-		Targets: []string{"scott"},
+		Targets: []string{"maintrenon"},
 		// Media:   media,
 		Message: Down4Message{
-			Root:      "a29f13efcc4b9cab1d5b7e8a5d785534c7a4ca202d1a657c74f4a75dc0e6da4b",
-			Type:      "chat",
+			// Root:      "a29f13efcc4b9cab1d5b7e8a5d785534c7a4ca202d1a657c74f4a75dc0e6da4b",
 			MessageID: randomID,
-			// MediaID:   media.Identifier,
-			SenderID:  "beast",
-			Text:      "She was a wonderful writer.",
+			// MediaID:   "1155251b5f998e78748462861bef3a46588c8e35",
+			SenderID:  "scorpion",
+			Text:      "`Push the narrative that it's not fair that not every has access to it (inequality) to push people to take it`. See how sophisticated that is?",
 			Timestamp: time.Now().Unix(),
 		},
 	}
@@ -169,30 +168,9 @@ func TestHandleSnipRequest(t *testing.T) {
 	// randomMessageID := hex.EncodeToString(rb2)
 
 	sr := SnipRequest{
-		Targets: []string{"scott"},
-		// Message: Down4Message{
-		// 	MessageID: randomMessageID,
-		// 	SenderID:  "itachi",
-		// 	Type:      "snip",
-		// 	Timestamp: unixMilliseconds(),
-		// 	MediaID:   randomMediaID,
-		// },
-		// Media: Down4Media{
-		// 	Data:       base64.StdEncoding.EncodeToString(wim),
-		// 	Identifier: randomMediaID,
-		// 	Metadata: map[string]string{
-		// 		"o":   "scott",
-		// 		"ts":  strconv.FormatInt(unixMilliseconds(), 10),
-		// 		"vid": "false",
-		// 		"shr": "true",
-		// 		"trv": "false",
-		// 		"pto": "false",
-		// 		"ptv": "false",
-		// 		"sqr": "false",
-		// 		"ar":  "1.0",
-		// 		"txt": "This guy is extremely powerful",
-		// 	},
-		// },
+		Targets: []string{"maintrenon"},
+		Sender:  "maintrenon",
+		MediaID: "05a147b8d0decf323b8cc7b26b595cdcce142ce3",
 	}
 
 	marsh, err := json.Marshal(sr)
@@ -218,14 +196,13 @@ func TestHandleHyperchatRequest(t *testing.T) {
 	root := sha256Hex(rb)
 
 	hr := HyperchatRequest{
-		Targets:   []string{"scott", "scorpion", "helene"},
-		WordPairs: []string{"hell fee", "hip boot", "chill herb", "speard salt", "paint dough"},
+		Targets:   []string{"scorpion", "helene", "lebron", "maintrenon"},
+		WordPairs: []string{"estimated war"},
 		Message: Down4Message{
-			Type:      "chat",
 			Root:      root,
 			MessageID: randomID,
 			SenderID:  "itachi",
-			Text:      "Another day, another random word. Hallelujiah",
+			Text:      "Hello good friends!",
 			Timestamp: unixMilliseconds(),
 		},
 	}
@@ -254,13 +231,9 @@ func TestHandleGroupRequest(t *testing.T) {
 	}
 
 	mediaMD := map[string]string{
-		"o":   "jeff",
-		"pto": "false",
-		"ptv": "false",
-		"ar":  "1.0",
-		"shr": "true",
-		"trv": "false",
-		"ts":  strconv.FormatInt(unixMilliseconds(), 10),
+		"o":  "helene",
+		"ar": "1.0",
+		"ts": strconv.FormatInt(unixMilliseconds(), 10),
 	}
 
 	mediaID := sha1Hex(gm)
@@ -273,7 +246,7 @@ func TestHandleGroupRequest(t *testing.T) {
 	t.Logf("Group root: %v\n", root)
 
 	gr := GroupRequest{
-		Targets:   []string{"beast", "scorpion", "caal", "scott", "wolf"},
+		Targets:   []string{"beast", "scorpion", "kurt", "wolf", "lebron", "maintrenon"},
 		GroupID:   root,
 		GroupName: "The Rats",
 		Private:   true,
@@ -285,9 +258,8 @@ func TestHandleGroupRequest(t *testing.T) {
 		Message: Down4Message{
 			Root:      root,
 			MessageID: randomID,
-			Type:      "chat",
 			Text:      "The rats are in town motherfuckers.",
-			SenderID:  "kurt",
+			SenderID:  "helene",
 			Timestamp: unixMilliseconds(),
 		},
 	}

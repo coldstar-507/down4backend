@@ -415,12 +415,13 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 	errChan2 := make(chan *error, len(req.Targets))
 	ackChan := make(chan bool, len(req.Targets))
 
-	var payload, title string = req.Sender, "@" + req.Sender + " pinged "
+	var payload, title string
 	if len(req.Root) > 0 {
-		payload = payload + "@" + req.Root
-		title = title + req.GroupName + "!"
+		payload = req.Root
+		title = "@" + req.Sender + " pinged " + req.GroupName + "!"
 	} else {
-		title = title + "you!"
+		payload = req.Sender
+		title = "@" + req.Sender + " pinged you!"
 	}
 
 	go getMessagingTokens(ctx, req.Targets, tknChan, errChan)

@@ -37,7 +37,6 @@ type Down4Media struct {
 // }
 
 type Down4Message struct {
-	Type        string `json:"t"`
 	Root        string `json:"rt,omitempty"`
 	MessageID   string `json:"id"`
 	SenderID    string `json:"s"`
@@ -47,7 +46,6 @@ type Down4Message struct {
 	Replies     string `json:"r,omitempty"`
 	Nodes       string `json:"n,omitempty"`
 	MediaID     string `json:"m,omitempty"`
-	PaymentID   string `json:"p,omitempty"`
 }
 
 type PaymentRequest struct {
