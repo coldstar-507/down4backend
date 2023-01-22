@@ -370,44 +370,6 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error decoding body: %v\n", err)
 	}
 
-	// mediaData, err := base64.StdEncoding.DecodeString(req.Media.Data)
-	// if err != nil {
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	log.Fatalf("error decoding base64 media data to bytes: %v\n", err)
-	// }
-
-	// var mediaWriter *storage.Writer
-	// if req.Media.Identifier != "" {
-	// 	mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
-	// 	if _, err := mediaWriter.Write(mediaData); err != nil {
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error writing snip media to message bucket: %v\n", err)
-	// 	}
-	// 	log.Printf("uploaded %v bytes of date no problem!\n", len(req.Media.Data))
-	// } else {
-	// 	log.Printf("We are not uploading any media")
-	// }
-
-	// err = s.RTDB.NewRef("Messages").Child(req.Message.MessageID).Set(ctx, req.Message)
-	// if err != nil {
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	log.Fatalf("error writing snip to rtdb: %v\n", err)
-	// }
-
-	// if mediaWriter != nil {
-	// 	if err := mediaWriter.Close(); err != nil {
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error writing snip: %v\n", err)
-	// 	}
-	// 	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
-	// 		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
-	// 			log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
-	// 		}
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error writing snip: %v\n", err)
-	// 	}
-	// }
-
 	tknChan := make(chan *string, len(req.Targets))
 	errChan := make(chan *error, len(req.Targets))
 	errChan2 := make(chan *error, len(req.Targets))
@@ -465,15 +427,6 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error decoding body: %v\n", err)
 	}
 
-	// this means, we are sending a media, without the upload
-	// if req.Message.MediaID != "" && req.Media.Identifier == "" {
-	// 	if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
-	// 		w.WriteHeader(http.StatusNoContent)
-	// 		log.Printf("we will need an upload for this message: %v\n", err)
-	// 		return
-	// 	}
-	// }
-
 	groupMediaObject := s.NDBCKT.Object(req.GroupMedia.Identifier)
 	groupMediaWriter := groupMediaObject.NewWriter(ctx)
 
@@ -484,17 +437,6 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	groupMediaWriter.Write(groupMediaData)
-
-	// var mediaWriter *storage.Writer
-	// if req.Media.Identifier != "" {
-	// 	mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
-	// 	mediaData, err := base64.StdEncoding.DecodeString(req.Media.Data)
-	// 	if err != nil {
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error decoding media from base64: %v\n", err)
-	// 	}
-	// 	mediaWriter.Write(mediaData)
-	// }
 
 	if err := groupMediaWriter.Close(); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -508,20 +450,6 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error updating media metadata: %v\n", err)
 	}
-
-	// if mediaWriter != nil {
-	// 	if err := mediaWriter.Close(); err != nil {
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error closing media writer: %v\n", err)
-	// 	}
-	// 	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
-	// 		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
-	// 			log.Printf("error deleting media at: %s, err = %v\n", req.Media.Identifier, err)
-	// 		}
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error updating media metadata: %v\n", err)
-	// 	}
-	// }
 
 	fullNode := FullNode{
 		Identifier: req.GroupID,
@@ -810,39 +738,6 @@ func HandleChatRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msgRef := s.RTDB.NewRef("Messages").Child(req.Message.MessageID)
-
-	// if req.Message.MediaID != "" && req.Media.Identifier == "" {
-	// 	if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
-	// 		w.WriteHeader(http.StatusNoContent)
-	// 		log.Printf("we will need an upload for this message: %v\n", err)
-	// 		return
-	// 	}
-	// }
-
-	// var mediaWriter *storage.Writer
-	// if req.Media.Identifier != "" {
-	// 	mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
-	// 	mediaData, err := base64.StdEncoding.DecodeString(req.Media.Data)
-	// 	if err != nil {
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error decoding image base64 data: %v\n", err)
-	// 	}
-	// 	mediaWriter.Write(mediaData)
-	// }
-
-	// if mediaWriter != nil {
-	// 	if err := mediaWriter.Close(); err != nil {
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error writing media: %v\n", err)
-	// 	}
-	// 	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
-	// 		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
-	// 			log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
-	// 		}
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error updating media metadata: %v\n", err)
-	// 	}
-	// }
 
 	if err := msgRef.Set(ctx, req.Message); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

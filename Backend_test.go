@@ -74,30 +74,6 @@ func TestHandlePaymentRequest(t *testing.T) {
 
 func TestHandleChatRequest(t *testing.T) {
 
-	// wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\SigridUndset.jpg")
-	// // im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
-	// if err != nil {
-	// 	t.Errorf("error reading file image for user init test: %v\n", err)
-	// }
-
-	// mediaID := sha256Hex(wim)
-
-	// media := Down4Media{
-	// 	Identifier: mediaID,
-	// 	Data:       base64.StdEncoding.EncodeToString(wim),
-	// 	Metadata: map[string]string{
-	// 		"o":   "scott",
-	// 		"ts":  strconv.FormatInt(unixMilliseconds(), 10),
-	// 		"vid": "false",
-	// 		"shr": "true",
-	// 		"trv": "false",
-	// 		"pto": "false",
-	// 		"ptv": "false",
-	// 		"sqr": "false",
-	// 		"ar":  "1.0",
-	// 	},
-	// }
-
 	rb := randomBuffer(16)
 	randomID := hex.EncodeToString(rb)
 
@@ -105,13 +81,11 @@ func TestHandleChatRequest(t *testing.T) {
 
 	cr := ChatRequest{
 		Targets: []string{"maintrenon"},
-		// Media:   media,
 		Message: Down4Message{
-			// Root:      "a29f13efcc4b9cab1d5b7e8a5d785534c7a4ca202d1a657c74f4a75dc0e6da4b",
 			MessageID: randomID,
-			// MediaID:   "1155251b5f998e78748462861bef3a46588c8e35",
-			SenderID:  "scorpion",
-			Text:      "`Push the narrative that it's not fair that not every has access to it (inequality) to push people to take it`. See how sophisticated that is?",
+			MediaID:   "0f52d9a4941e6ae3debd86c67b212afff10750be",
+			SenderID:  "beast",
+			Text:      "This is the rulers of the world trying to kill your ass.",
 			Timestamp: time.Now().Unix(),
 		},
 	}
@@ -155,17 +129,6 @@ func TestHandlePingRequest(t *testing.T) {
 }
 
 func TestHandleSnipRequest(t *testing.T) {
-
-	// wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\Capture.PNG")
-	// // im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
-	// if err != nil {
-	// 	t.Errorf("error reading file image for user init test: %v\n", err)
-	// }
-
-	// rb := randomBuffer(16)
-	// rb2 := randomBuffer(16)
-	// randomMediaID := hex.EncodeToString(rb)
-	// randomMessageID := hex.EncodeToString(rb2)
 
 	sr := SnipRequest{
 		Targets: []string{"maintrenon"},
