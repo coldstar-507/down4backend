@@ -19,6 +19,7 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/db"
 	"firebase.google.com/go/v4/messaging"
+	"github.com/libsv/go-bk/base58"
 	"github.com/libsv/go-bk/bip39"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -353,7 +354,7 @@ func HandlePingRequest(w http.ResponseWriter, r *http.Request) {
 		},
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error mutlicating message: %v\n", err)
+		log.Printf("error mutlicating message: %v\n", err)
 	}
 
 	if err := updateActivity(ctx, req.SenderID); err != nil {
@@ -410,7 +411,7 @@ func HandleSnipRequest(w http.ResponseWriter, r *http.Request) {
 		},
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error mutlicating message: %v\n", err)
+		log.Printf("error mutlicating message: %v\n", err)
 	}
 
 	if err := updateActivity(ctx, req.Sender); err != nil {
@@ -494,6 +495,17 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	marshalledFullNode, err := json.Marshal(fullNode)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error marshalling groupNode: %v\n", err)
+	}
+
+	if _, err := w.Write(marshalledFullNode); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing groupNode to response: %v\n", err)
+	}
+
 	title := "@" + req.Message.SenderID + " formed " + req.GroupName
 	var body string
 	if req.Message.MessageID != "" {
@@ -514,23 +526,13 @@ func HandleGroupRequest(w http.ResponseWriter, r *http.Request) {
 		},
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error mutlicating message: %v\n", err)
+		log.Printf("error mutlicating message: %v\n", err)
 	}
 
 	if err := updateActivity(ctx, req.Message.SenderID); err != nil {
 		log.Printf("error updating activity for %s: %v\n", req.Message.SenderID, err)
 	}
 
-	marshalledFullNode, err := json.Marshal(fullNode)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error marshalling groupNode: %v\n", err)
-	}
-
-	if _, err := w.Write(marshalledFullNode); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error writing groupNode to response: %v\n", err)
-	}
 }
 
 func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
@@ -544,14 +546,6 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msgRef := s.RTDB.NewRef("Messages").Child(req.Message.MessageID)
-
-	// if req.Message.MediaID != "" && req.Media.Identifier == "" {
-	// 	if _, err := getMediaMetadata(ctx, req.Media.Identifier); err != nil {
-	// 		w.WriteHeader(http.StatusNoContent)
-	// 		log.Printf("we will need an upload for this message: %v\n", err)
-	// 		return
-	// 	}
-	// }
 
 	reqBody, err := json.Marshal(req.WordPairs)
 	if err != nil {
@@ -573,25 +567,9 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	wp := strings.Split(jsonImGen["prompt"], " ")
 
-	// decodedImBuf := make([]byte, base64.StdEncoding.DecodedLen(len(jsonImGen["image"])))
-	// if _, err := base64.StdEncoding.Decode(decodedImBuf, []byte(jsonImGen["image"])); err != nil {
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	log.Fatalf("error reading hyperchat image body to Json: %v\n", err)
-	// }
-
-	// mediaWriter
 	var mediaWriter2 *storage.Writer
-	// if req.Media.Identifier != "" {
-	// 	mediaWriter = s.MSGBCKT.Object(req.Media.Identifier).NewWriter(ctx)
-	// 	mediaData, err := base64.StdEncoding.DecodeString(req.Media.Data)
-	// 	if err != nil {
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error decoding media from base64: %v\n", err)
-	// 	}
-	// 	mediaWriter.Write(mediaData)
-	// }
 
-	hyperchatImageID := nByteBase64ID(16)
+	hyperchatImageID := nByteBase58ID(16)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error generating hyperchatID from hyperchatImage: %v\n", err)
@@ -608,6 +586,7 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 	hcImageMD := map[string]string{
 		"o":  req.Message.SenderID,
 		"ar": "1.0",
+		"ex": ".png",
 		"ts": strconv.FormatInt(unixMilliseconds(), 10),
 	}
 
@@ -621,21 +600,6 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 			log.Fatalf("error writing hyperchatMedia metadata to storage: %v\n", err)
 		}
 	}
-
-	// if mediaWriter != nil {
-	// 	if err := mediaWriter.Close(); err != nil {
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error writing media: %v\n", err)
-	// 	}
-
-	// 	if err := updateMediaMetadata(ctx, req.Media.Identifier, &req.Media.Metadata); err != nil {
-	// 		if err := deleteMedia(ctx, req.Media.Identifier); err != nil {
-	// 			log.Printf("error deleting media at %s: %v\n", req.Media.Identifier, err)
-	// 		}
-	// 		w.WriteHeader(http.StatusInternalServerError)
-	// 		log.Fatalf("error updating media metadata: %v\n", err)
-	// 	}
-	// }
 
 	if err := msgRef.Set(ctx, req.Message); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -694,6 +658,11 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error marshalling hyperchatNode: %v\n", err)
 	}
 
+	if _, err := w.Write(marshalledHyperchatNode); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Fatalf("error writing marshalledHyperchatNode to response: %v\n", err)
+	}
+
 	var body, title string
 	title = wp[0] + " " + wp[1]
 	if req.Message.MediaID != "" {
@@ -714,16 +683,11 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		},
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error mutlicating message: %v\n", err)
+		log.Printf("error mutlicating notification: %v\n", err)
 	}
 
 	if err := updateActivity(ctx, req.Message.SenderID); err != nil {
 		log.Printf("error updating activity for %s: %v\n", req.Message.SenderID, err)
-	}
-
-	if _, err := w.Write(marshalledHyperchatNode); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error writing marshalledHyperchatNode to response: %v\n", err)
 	}
 }
 
@@ -1041,6 +1005,12 @@ func nByteBase64ID(n int) string {
 	buf := make([]byte, n)
 	rand.Read(buf)
 	return base64.StdEncoding.EncodeToString(buf)
+}
+
+func nByteBase58ID(n int) string {
+	buf := make([]byte, n)
+	rand.Read(buf)
+	return base58.Encode(buf)
 }
 
 // func hexSha256(ctx context.Context, data []byte) (string, error) {
