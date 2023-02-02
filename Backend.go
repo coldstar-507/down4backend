@@ -638,11 +638,7 @@ func HandleHyperchatRequest(w http.ResponseWriter, r *http.Request) {
 		Image: Down4Media{
 			Data:       jsonImGen["image"],
 			Identifier: hyperchatImageID,
-			Metadata: map[string]string{
-				"o":  req.Message.SenderID,
-				"ts": strconv.FormatInt(unixMilliseconds(), 10),
-				"ar": "1.0",
-			},
+			Metadata:   hcImageMD,
 		},
 	}
 
@@ -957,6 +953,7 @@ func uploadNodeMedia(ctx context.Context, media Down4Media) error {
 }
 
 func getNode(ctx context.Context, id string, nodeChan chan *FullNode, errChan chan *error) {
+
 	var fsn FireStoreNode
 	snap, err := s.FS.Collection("Nodes").Doc(id).Get(ctx)
 	if err != nil {

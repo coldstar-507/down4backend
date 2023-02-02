@@ -331,7 +331,7 @@ func TestMnemonicHttp(t *testing.T) {
 }
 
 func TestGetNodes(t *testing.T) {
-	nodesToGet := []byte("helene")
+	nodesToGet := []byte("2Be7vgoPcLN81feFqCCCEf7qiTRn 2Nw9y365vvYo7r7R58qjkpQa7dbX")
 	rdr := bytes.NewReader(nodesToGet)
 
 	req := httptest.NewRequest("POST", "/", rdr)
@@ -344,8 +344,9 @@ func TestGetNodes(t *testing.T) {
 		t.Errorf("error decoding response: %v\n", err)
 	}
 
-	for i, node := range nodes {
-		t.Logf("\nnode #%v\nid: %v\nname: %v\ntype: %v\nimID: %v\nneuteur: %v\n", i, node.Identifier, node.Name, node.Type, node.Image.Identifier, node.Neuter)
+	for _, node := range nodes {
+		t.Logf("NodeID=%s\nName=%s\nLastName=%s\nImageID=%s\nMetadata=%v\n", node.Identifier, node.Name, node.Lastname, node.Image.Identifier, node.Image.Metadata)
+		// t.Logf("\nnode #%v\nid: %v\nname: %v\ntype: %v\nimID: %v\nneuteur: %v\n", i, node.Identifier, node.Name, node.Type, node.Image.Identifier, node.Neuter)
 	}
 }
 
