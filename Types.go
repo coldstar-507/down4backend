@@ -1,5 +1,14 @@
 package backend
 
+type MessageRequest struct {
+	Sender    string   `json:"s"`
+	Targets   []string `json:"t"`
+	Header    string   `json:"h"`
+	Body      string   `json:"b"`
+	Data      string   `json:"d"`
+	Thumbnail string   `json:"n"`
+}
+
 type Down4Media struct {
 	Identifier string            `json:"id"`
 	Data       string            `json:"d,omitempty"`
@@ -8,88 +17,60 @@ type Down4Media struct {
 	Metadata   map[string]string `json:"md"`
 }
 
-// func (m Down4Media) Metadata() *map[string]string {
-// 	return &map[string]string{
-// 		"o":   m.Owner,
-// 		"id":  m.Identifier,
-// 		"ts":  strconv.FormatInt(m.Timestamp, 10),
-// 		"ar":  strconv.FormatFloat(m.AspectRatio, 'f', 4, 32),
-// 		"vid": strconv.FormatBool(m.IsVideo),
-// 		"trv": strconv.FormatBool(m.IsReversed),
-// 		"shr": strconv.FormatBool(m.IsShareable),
-// 		"ptv": strconv.FormatBool(m.IsPaidToView),
-// 		"sqr": strconv.FormatBool(m.IsSquared),
-// 		"pto": strconv.FormatBool(m.IsPaiedToOwn),
-// 		"txt": m.Text,
-// 	}
+// type Down4Message struct {
+// 	Root        string `json:"rt,omitempty"`
+// 	MessageID   string `json:"id"`
+// 	SenderID    string `json:"s"`
+// 	ForwarderID string `json:"f,omitempty"`
+// 	Text        string `json:"txt,omitempty"`
+// 	Timestamp   int64  `json:"ts"`
+// 	Replies     string `json:"r,omitempty"`
+// 	Nodes       string `json:"n,omitempty"`
+// 	MediaID     string `json:"m,omitempty"`
 // }
 
-// type MediaMetadata struct {
-// 	Owner       string `json:"o"`
-// 	AspectRatio string `json:"ar"`
-// 	IsPayToView string `json:"ptv"`
-// 	IsPayToOwn  string `json:"pto"`
-// 	IsShareable string `json:"shr"`
-// 	IsSquare    string `json:"sqr"`
-// 	IsVideo     string `json:"vid"`
-// 	Timestamp   string `json:"ts"`
-// 	Text        string `json:"txt"`
+// type PaymentRequest struct {
+// 	Sender     string   `json:"s"`
+// 	Targets    []string `json:"tr"`
+// 	Payment    []byte   `json:"pay"`
+// 	Identifier string   `json:"id"`
+// 	TextNote   string   `json:"txt"`
 // }
 
-type Down4Message struct {
-	Root        string `json:"rt,omitempty"`
-	MessageID   string `json:"id"`
-	SenderID    string `json:"s"`
-	ForwarderID string `json:"f,omitempty"`
-	Text        string `json:"txt,omitempty"`
-	Timestamp   int64  `json:"ts"`
-	Replies     string `json:"r,omitempty"`
-	Nodes       string `json:"n,omitempty"`
-	MediaID     string `json:"m,omitempty"`
-}
+// type PingRequest struct {
+// 	Targets  []string `json:"tr"`
+// 	Text     string   `json:"txt"`
+// 	SenderID string   `json:"s"`
+// }
 
-type PaymentRequest struct {
-	Sender     string   `json:"s"`
-	Targets    []string `json:"tr"`
-	Payment    []byte   `json:"pay"`
-	Identifier string   `json:"id"`
-	TextNote   string   `json:"txt"`
-}
+// type SnipRequest struct {
+// 	Sender    string   `json:"s"`
+// 	MediaID   string   `json:"m"`
+// 	Targets   []string `json:"tr"`
+// 	Root      string   `json:"rt"`
+// 	GroupName string   `json:"gn"`
+// }
 
-type PingRequest struct {
-	Targets  []string `json:"tr"`
-	Text     string   `json:"txt"`
-	SenderID string   `json:"s"`
-}
+// type ChatRequest struct {
+// 	GroupName string       `json:"gn"`
+// 	Targets   []string     `json:"tr"`
+// 	Message   Down4Message `json:"msg"`
+// }
 
-type SnipRequest struct {
-	Sender    string   `json:"s"`
-	MediaID   string   `json:"m"`
-	Targets   []string `json:"tr"`
-	Root      string   `json:"rt"`
-	GroupName string   `json:"gn"`
-}
+// type HyperchatRequest struct {
+// 	Targets   []string     `json:"tr"`
+// 	WordPairs []string     `json:"wp"`
+// 	Message   Down4Message `json:"msg"`
+// }
 
-type ChatRequest struct {
-	GroupName string       `json:"gn"`
-	Targets   []string     `json:"tr"`
-	Message   Down4Message `json:"msg"`
-}
-
-type HyperchatRequest struct {
-	Targets   []string     `json:"tr"`
-	WordPairs []string     `json:"wp"`
-	Message   Down4Message `json:"msg"`
-}
-
-type GroupRequest struct {
-	Targets    []string     `json:"tr"`
-	Message    Down4Message `json:"msg"`
-	GroupID    string       `json:"id"`
-	GroupName  string       `json:"gn"`
-	GroupMedia Down4Media   `json:"gm"`
-	Private    bool         `json:"pv"`
-}
+// type GroupRequest struct {
+// 	Targets    []string     `json:"tr"`
+// 	Message    Down4Message `json:"msg"`
+// 	GroupID    string       `json:"id"`
+// 	GroupName  string       `json:"gn"`
+// 	GroupMedia Down4Media   `json:"gm"`
+// 	Private    bool         `json:"pv"`
+// }
 
 type FireStoreNode struct {
 	Neuter     string   `json:"nt,omitempty" firestore:"nt,omitempty"`
