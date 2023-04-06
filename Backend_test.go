@@ -2,45 +2,41 @@ package backend
 
 import (
 	"bytes"
-	"crypto/sha1"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
+	// "encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
+
+	// "io/fs"
 
 	// "log"
-	"math/rand"
+
 	"net/http/httptest"
-	"os"
-	"strconv"
+	// "os"
 	"strings"
 	"testing"
-	"time"
 )
 
-func randomBuffer(len int) []byte {
-	buf := make([]byte, len)
-	rand.Seed(time.Now().UnixNano())
-	rand.Read(buf)
-	return buf
-}
+// func randomBuffer(len int) []byte {
+// 	buf := make([]byte, len)
+// 	rand.Seed(time.Now().UnixNano())
+// 	rand.Read(buf)
+// 	return buf
+// }
 
-func sha256Hex(data []byte) string {
-	h := sha256.New()
-	h.Write(data)
-	hashed := h.Sum(make([]byte, 0))
-	return hex.EncodeToString(hashed)
-}
+// func sha256Hex(data []byte) string {
+// 	h := sha256.New()
+// 	h.Write(data)
+// 	hashed := h.Sum(make([]byte, 0))
+// 	return hex.EncodeToString(hashed)
+// }
 
-func sha1Hex(data []byte) string {
-	h := sha1.New()
-	h.Write(data)
-	hashed := h.Sum(make([]byte, 0))
-	return hex.EncodeToString(hashed)
-}
+// func sha1Hex(data []byte) string {
+// 	h := sha1.New()
+// 	h.Write(data)
+// 	hashed := h.Sum(make([]byte, 0))
+// 	return hex.EncodeToString(hashed)
+// }
 
 func TestTimestamp(t *testing.T) {
 	ts := unixMilliseconds()
@@ -67,13 +63,13 @@ func TestUsernameValidityHttp(t *testing.T) {
 }
 
 func TestUserInitializationHttp(t *testing.T) {
-	wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\1631267891994.jpg")
+	// wim, err := os.ReadFile("C:\\Users\\coton\\Pictures\\Chan\\1631267891994.jpg")
 	// im, err := os.ReadFile("/home/scott/Pictures/basedretard.png")
-	if err != nil {
-		t.Errorf("error reading file image for user init test: %v\n", err)
-	}
+	// if err != nil {
+	// 	t.Errorf("error reading file image for user init test: %v\n", err)
+	// }
 
-	randomID := nByteBase64ID(16)
+	// randomID := nByteBase64ID(16)
 
 	jeff := InitUserInfo{
 		Neuter:     "IAmANeuteMotherfuckers",
@@ -82,19 +78,20 @@ func TestUserInitializationHttp(t *testing.T) {
 		Name:       "Magnus",
 		Lastname:   "Carlsen",
 		Identifier: "cat",
-		Image: Down4Media{
-			Identifier: randomID,
-			Data:       base64.StdEncoding.EncodeToString(wim),
-			Metadata: map[string]string{
-				"o":   "cat",
-				"ts":  strconv.FormatInt(unixMilliseconds(), 10),
-				"trv": "false",
-				"ptv": "false",
-				"shr": "true",
-				"vid": "false",
-				"pto": "false",
-			},
-		},
+		Image:      "IAmMediaID",
+		// Image: Down4Media{
+		// 	Identifier: randomID,
+		// 	Data:       base64.StdEncoding.EncodeToString(wim),
+		// 	Metadata: map[string]string{
+		// 		"o":   "cat",
+		// 		"ts":  strconv.FormatInt(unixMilliseconds(), 10),
+		// 		"trv": "false",
+		// 		"ptv": "false",
+		// 		"shr": "true",
+		// 		"vid": "false",
+		// 		"pto": "false",
+		// 	},
+		// },
 	}
 
 	marshalled, err := json.Marshal(jeff)
@@ -136,7 +133,7 @@ func TestMnemonicHttp(t *testing.T) {
 }
 
 func TestGetNodes(t *testing.T) {
-	nodesToGet := []byte("2Be7vgoPcLN81feFqCCCEf7qiTRn 2Nw9y365vvYo7r7R58qjkpQa7dbX")
+	nodesToGet := []byte("madara one csw")
 	rdr := bytes.NewReader(nodesToGet)
 
 	req := httptest.NewRequest("POST", "/", rdr)
@@ -149,55 +146,56 @@ func TestGetNodes(t *testing.T) {
 		t.Errorf("error decoding response: %v\n", err)
 	}
 
+	t.Logf("There are %v nodes\n", len(nodes))
+
 	for _, node := range nodes {
-		t.Logf("NodeID=%s\nName=%s\nLastName=%s\nImageID=%s\nMetadata=%v\n", node.Identifier, node.Name, node.Lastname, node.Image.Identifier, node.Image.Metadata)
-		// t.Logf("\nnode #%v\nid: %v\nname: %v\ntype: %v\nimID: %v\nneuteur: %v\n", i, node.Identifier, node.Name, node.Type, node.Image.Identifier, node.Neuter)
+		t.Logf("\nNodeID=%s\nName=%s\nMediaID=%s\nMediaOwner=%s\n=========\n", node.Node["id"], node.Node["name"], node.Node["mediaID"], node.Metadata["ownerID"])
 	}
 }
 
-func TestGetMessageMedia(t *testing.T) {
-	mediaID := "ab1893d1f5128ee462f63759294d9aeb7377207851336aeacfc673bede71d62c"
-	rdr := bytes.NewReader([]byte(mediaID))
+// func TestGetMessageMedia(t *testing.T) {
+// 	mediaID := "ab1893d1f5128ee462f63759294d9aeb7377207851336aeacfc673bede71d62c"
+// 	rdr := bytes.NewReader([]byte(mediaID))
 
-	rsp := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/", rdr)
+// 	rsp := httptest.NewRecorder()
+// 	req := httptest.NewRequest("POST", "/", rdr)
 
-	GetMessageMedia(rsp, req)
+// 	GetMessageMedia(rsp, req)
 
-	var d4media Down4Media
-	if err := json.NewDecoder(rsp.Body).Decode(&d4media); err != nil {
-		t.Errorf("error decoding message media: %v\n", err)
-	}
+// 	var d4media Down4Media
+// 	if err := json.NewDecoder(rsp.Body).Decode(&d4media); err != nil {
+// 		t.Errorf("error decoding message media: %v\n", err)
+// 	}
 
-	mediaData, err := base64.StdEncoding.DecodeString(d4media.Data)
-	if err != nil {
-		t.Errorf("error decoding media data from base64: %v\n", mediaData)
-	}
+// 	mediaData, err := base64.StdEncoding.DecodeString(d4media.Data)
+// 	if err != nil {
+// 		t.Errorf("error decoding media data from base64: %v\n", mediaData)
+// 	}
 
-	if rsp.Code == 200 {
-		t.Logf("\ngot media\nid: %v\nmd: %v\n", d4media.Identifier, d4media.Metadata)
-		os.WriteFile("C:\\Users\\coton\\Desktop\\cat.png", mediaData, fs.ModeDevice)
-	} else {
-		t.Errorf("error getting message media")
-	}
-}
+// 	if rsp.Code == 200 {
+// 		t.Logf("\ngot media\nid: %v\nmd: %v\n", d4media.Identifier, d4media.Metadata)
+// 		os.WriteFile("C:\\Users\\coton\\Desktop\\cat.png", mediaData, fs.ModeDevice)
+// 	} else {
+// 		t.Errorf("error getting message media")
+// 	}
+// }
 
-func TestGetMessageMediaMetadata(t *testing.T) {
-	mediaID := "6bfac783ae08397f449e8f04e96af648fd710aae0bcd9b16541da8538e7991db"
-	rdr := bytes.NewReader([]byte(mediaID))
+// func TestGetMessageMediaMetadata(t *testing.T) {
+// 	mediaID := "6bfac783ae08397f449e8f04e96af648fd710aae0bcd9b16541da8538e7991db"
+// 	rdr := bytes.NewReader([]byte(mediaID))
 
-	rsp := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/", rdr)
+// 	rsp := httptest.NewRecorder()
+// 	req := httptest.NewRequest("POST", "/", rdr)
 
-	GetMediaMetadata(rsp, req)
-	var md map[string]string
-	if err := json.NewDecoder(rsp.Body).Decode(&md); err != nil {
-		t.Errorf("error decoding message medatada: %v\n", err)
-	}
+// 	GetMediaMetadata(rsp, req)
+// 	var md map[string]string
+// 	if err := json.NewDecoder(rsp.Body).Decode(&md); err != nil {
+// 		t.Errorf("error decoding message medatada: %v\n", err)
+// 	}
 
-	if rsp.Code == 200 {
-		t.Logf("\nmedia metadata: %v\n", md)
-	} else {
-		t.Errorf("error getting message metadata\n")
-	}
-}
+// 	if rsp.Code == 200 {
+// 		t.Logf("\nmedia metadata: %v\n", md)
+// 	} else {
+// 		t.Errorf("error getting message metadata\n")
+// 	}
+// }

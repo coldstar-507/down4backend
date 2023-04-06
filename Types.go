@@ -9,13 +9,13 @@ type MessageRequest struct {
 	Thumbnail string   `json:"n"`
 }
 
-type Down4Media struct {
-	Identifier string            `json:"id"`
-	Data       string            `json:"d,omitempty"`
-	Thumbnail  string            `json:"tn,omitempty"`
-	NetworkURL string            `json:"nw,omitempty"`
-	Metadata   map[string]string `json:"md"`
-}
+// type Down4Media struct {
+// 	Identifier string `json:"id"`
+// 	Data       string `json:"data,omitempty"`
+// 	Thumbnail  string `json:"thumbnail,omitempty"`
+// 	// NetworkURL string            `json:"nw,omitempty"`
+// 	Metadata map[string]string `json:"metadata"`
+// }
 
 // type Down4Message struct {
 // 	Root        string `json:"rt,omitempty"`
@@ -73,78 +73,81 @@ type Down4Media struct {
 // }
 
 type FireStoreNode struct {
-	Neuter     string   `json:"nt,omitempty" firestore:"nt,omitempty"`
-	Identifier string   `json:"id" firestore:"id"`
-	Type       string   `json:"t" firestore:"t"`
-	Name       string   `json:"nm" firestore:"nm"`
-	Lastname   string   `json:"ln,omitempty" firestore:"ln,omitempty"`
-	ImageID    string   `json:"im" firestore:"im"`
-	Private    bool     `json:"pv" firestore:"pv"`
-	Latitude   float32  `json:"lat,omitempty" firestore:"lat,omitempty"`
-	Longitude  float32  `json:"lng,omitempty" firestore:"lng,omitempty"`
-	Friends    []string `json:"frd,omitempty" firestore:"frd,omitempty"`
-	Group      []string `json:"grp,omitempty" firestore:"grp,omitempty"`
-	Messages   []string `json:"msg,omitempty" firestore:"msg,omitempty"`
-	Admins     []string `json:"adm,omitempty" firestore:"adm,omitempty"`
-	Childs     []string `json:"chl,omitempty" firestore:"chl,omitempty"`
-	Parents    []string `json:"prt,omitempty" firestore:"prt,omitempty"`
-	Words      []string `json:"wrd,omitempty" firestore:"wrd,omitempty"`
+	Identifier string `json:"id" firestore:"id"`
+	Neuter     string `json:"neuter,omitempty" firestore:"neuter,omitempty"`
+	Type       string `json:"type" firestore:"type"`
+	Name       string `json:"name" firestore:"name"`
+	Lastname   string `json:"lastName,omitempty" firestore:"lastName,omitempty"`
+	ImageID    string `json:"mediaID" firestore:"mediaID"`
+	IsPrivate  bool   `json:"isPrivate" firestore:"isPrivate"`
+	// Latitude   float32 `json:"latitude,omitempty" firestore:"latitude,omitempty"`
+	// Longitude  float32 `json:"longitude,omitempty" firestore:"longitude,omitempty"`
+	// Friends    []string `json:"frd,omitempty" firestore:"frd,omitempty"`
+	Group []string `json:"group,omitempty" firestore:"group,omitempty"`
+	// Messages   []string `json:"msg,omitempty" firestore:"msg,omitempty"`
+	// Admins     []string `json:"adm,omitempty" firestore:"adm,omitempty"`
+	Publics  []string `json:"publics,omitempty" firestore:"public,omitempty"`
+	Privates []string `json:"privates,omitempty" firestore:"private,omitempty"`
+	// Words      []string `json:"wrd,omitempty" firestore:"wrd,omitempty"`
 }
 
 type FullNode struct {
-	Neuter     string     `json:"nt,omitempty"`
-	Identifier string     `json:"id"`
-	Type       string     `json:"t"`
-	Name       string     `json:"nm"`
-	Lastname   string     `json:"ln,omitempty"`
-	Image      Down4Media `json:"im"`
-	Private    bool       `json:"pv"`
-	Latitude   float32    `json:"lat,omitempty"`
-	Longitude  float32    `json:"lng,omitempty"`
-	Friends    []string   `json:"frd,omitempty"`
-	Group      []string   `json:"grp,omitempty"`
-	Messages   []string   `json:"msg,omitempty"`
-	Admins     []string   `json:"adm,omitempty"`
-	Childs     []string   `json:"chl,omitempty"`
-	Parents    []string   `json:"prt,omitempty"`
-	Words      []string   `json:"wrd,omitempty"`
+	Node     map[string]interface{} `json:"node"`
+	Metadata map[string]string      `json:"media"`
+	Data     string                 `json:"data"`
 }
 
-func (fn *FullNode) ToFireStoreNode() *FireStoreNode {
-	return &FireStoreNode{
-		Type:       fn.Type,
-		Name:       fn.Name,
-		Lastname:   fn.Lastname,
-		Identifier: fn.Identifier,
-		Private:    fn.Private,
-		ImageID:    fn.Image.Identifier,
-		Latitude:   fn.Latitude,
-		Longitude:  fn.Longitude,
-		Friends:    fn.Friends,
-		Group:      fn.Group,
-		Messages:   fn.Messages,
-		Admins:     fn.Admins,
-		Childs:     fn.Childs,
-		Parents:    fn.Parents,
-		Words:      fn.Words,
-	}
-}
+// type FullNode struct {
+// 	Neuter     string     `json:"nt,omitempty"`
+// 	Identifier string     `json:"id"`
+// 	Type       string     `json:"t"`
+// 	Name       string     `json:"nm"`
+// 	Lastname   string     `json:"ln,omitempty"`
+// 	Image      Down4Media `json:"im"`
+// 	Private    bool       `json:"pv"`
+// 	Latitude   float32    `json:"lat,omitempty"`
+// 	Longitude  float32    `json:"lng,omitempty"`
+// 	Friends    []string   `json:"frd,omitempty"`
+// 	Group      []string   `json:"grp,omitempty"`
+// 	Messages   []string   `json:"msg,omitempty"`
+// 	Admins     []string   `json:"adm,omitempty"`
+// 	Childs     []string   `json:"chl,omitempty"`
+// 	Parents    []string   `json:"prt,omitempty"`
+// 	Words      []string   `json:"wrd,omitempty"`
+// }
+
+// func (fn *FullNode) ToFireStoreNode() *FireStoreNode {
+// 	return &FireStoreNode{
+// 		Type:       fn.Type,
+// 		Name:       fn.Name,
+// 		Lastname:   fn.Lastname,
+// 		Identifier: fn.Identifier,
+// 		Private:    fn.Private,
+// 		ImageID:    fn.Image.Identifier,
+// 		Latitude:   fn.Latitude,
+// 		Longitude:  fn.Longitude,
+// 		Friends:    fn.Friends,
+// 		Group:      fn.Group,
+// 		Messages:   fn.Messages,
+// 		Admins:     fn.Admins,
+// 		Childs:     fn.Childs,
+// 		Parents:    fn.Parents,
+// 		Words:      fn.Words,
+// 	}
+// }
 
 type UserInfo struct {
-	Secret   string            `json:"sh"`
-	Activity int64             `json:"ac"`
-	Token    string            `json:"tkn"`
-	Messages map[string]string `json:"m"`
-	Snips    map[string]string `json:"s"`
-	Payments map[string]string `json:"p"`
+	Secret   string `json:"secret"`
+	Activity int64  `json:"activity"`
+	Token    string `json:"token"`
 }
 
 type InitUserInfo struct {
-	Secret     string     `json:"sh"`
-	Token      string     `json:"tkn"`
-	Neuter     string     `json:"nt"`
-	Identifier string     `json:"id"`
-	Name       string     `json:"nm"`
-	Lastname   string     `json:"ln"`
-	Image      Down4Media `json:"im"`
+	Identifier string `json:"id"`
+	Name       string `json:"name"`
+	Lastname   string `json:"lastName"`
+	Secret     string `json:"secret"`
+	Token      string `json:"token"`
+	Neuter     string `json:"neuter"`
+	Image      string `json:"mediaID"`
 }

@@ -4,7 +4,10 @@ import (
 	// "bytes"
 
 	"context"
-	"crypto/rand"
+	"strings"
+
+	// "crypto/rand"
+	// "encoding/base64"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,7 +16,7 @@ import (
 	"net/http"
 
 	// "strconv"
-	"strings"
+	// "strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -21,7 +24,6 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/db"
 	"firebase.google.com/go/v4/messaging"
-	"github.com/libsv/go-bk/base58"
 	"github.com/libsv/go-bk/bip39"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -127,10 +129,10 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("error decoding userinfo: %v\n", err)
 	}
 
-	if err := uploadNodeMedia(ctx, info.Image); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error uploading media in user initialization: %v\n", err)
-	}
+	// if err := uploadNodeMedia(ctx, info.Image); err != nil {
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	log.Fatalf("error uploading media in user initialization: %v\n", err)
+	// }
 
 	nodeRef := s.FS.Collection("Nodes").Doc(info.Identifier)
 	createFirestoreNode := func(ctx context.Context, tx *firestore.Transaction) error {
@@ -146,13 +148,15 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 			Identifier: info.Identifier,
 			Name:       info.Name,
 			Lastname:   info.Lastname,
-			ImageID:    info.Image.Identifier,
-			Private:    false,
+			ImageID:    info.Image,
+			IsPrivate:  false,
 			Type:       "user",
-			Friends:    make([]string, 0),
-			Childs:     make([]string, 0),
-			Parents:    make([]string, 0),
-			Words:      make([]string, 0),
+			Publics:    []string{},
+			Privates:   []string{},
+			// Friends:    make([]string, 0),
+			// Childs:     make([]string, 0),
+			// Parents:    make([]string, 0),
+			// Words:      make([]string, 0),
 		}
 		if err := tx.Set(nodeRef, nodeInfo); err != nil {
 			return err
@@ -162,7 +166,7 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.FS.RunTransaction(ctx, createFirestoreNode); err != nil {
-		s.NDBCKT.Object(info.Image.Identifier).Delete(ctx) // try deleting object, doesn't really matter if it fails
+		s.NDBCKT.Object(info.Image).Delete(ctx) // try deleting object, doesn't really matter if it fails
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing user info transaction: %v\n", err)
 	}
@@ -179,16 +183,13 @@ func InitUser(w http.ResponseWriter, r *http.Request) {
 			Secret:   info.Secret,
 			Activity: unixMilliseconds(),
 			Token:    info.Token,
-			Snips:    make(map[string]string),
-			Messages: make(map[string]string),
-			Payments: make(map[string]string),
 		}
 		return realtimeUserInfo, nil
 	}
 
 	if err := s.RTDB.NewRef("Users/"+info.Identifier).Transaction(ctx, createRealtimeUser); err != nil {
 		nodeRef.Delete(ctx)
-		s.NDBCKT.Object(info.Image.Identifier).Delete(ctx)
+		s.NDBCKT.Object(info.Image).Delete(ctx)
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Fatalf("error writing userinfo on realtimeDB in initUser: %v\n", err)
 	}
@@ -262,102 +263,102 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetMessageMedia(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error reading body bytes: %v\n", err)
-	}
-	mediaID := string(bodyBytes)
-	d4Media, err := getMediaWithData(ctx, s.MSGBCKT, mediaID)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error getting message media: %v\n", err)
-	}
-	if err := json.NewEncoder(w).Encode(*d4Media); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error encoding media to response: %v\n", err)
-	}
-	w.WriteHeader(http.StatusOK)
-}
+// func GetMessageMedia(w http.ResponseWriter, r *http.Request) {
+// 	ctx := context.Background()
+// 	bodyBytes, err := io.ReadAll(r.Body)
+// 	if err != nil {
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 		log.Fatalf("error reading body bytes: %v\n", err)
+// 	}
+// 	mediaID := string(bodyBytes)
+// 	d4Media, err := getMediaWithData(ctx, s.MSGBCKT, mediaID)
+// 	if err != nil {
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 		log.Fatalf("error getting message media: %v\n", err)
+// 	}
+// 	if err := json.NewEncoder(w).Encode(*d4Media); err != nil {
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 		log.Fatalf("error encoding media to response: %v\n", err)
+// 	}
+// 	w.WriteHeader(http.StatusOK)
+// }
 
-func GetMediaMetadata(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Fatalf("error reading body bytes: %v\n", err)
-	}
-	mediaID := string(bodyBytes)
-	metadata, err := getMediaMetadata(ctx, mediaID)
-	if err != nil {
-		w.WriteHeader(http.StatusNoContent)
-	} else {
-		marshalled, err := json.Marshal(*metadata)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-		} else {
-			w.Write(marshalled)
-			w.WriteHeader(http.StatusOK)
-		}
-	}
-}
+// func GetMediaMetadata(w http.ResponseWriter, r *http.Request) {
+// 	ctx := context.Background()
+// 	bodyBytes, err := io.ReadAll(r.Body)
+// 	if err != nil {
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 		log.Fatalf("error reading body bytes: %v\n", err)
+// 	}
+// 	mediaID := string(bodyBytes)
+// 	metadata, err := getMediaMetadata(ctx, mediaID)
+// 	if err != nil {
+// 		w.WriteHeader(http.StatusNoContent)
+// 	} else {
+// 		marshalled, err := json.Marshal(*metadata)
+// 		if err != nil {
+// 			w.WriteHeader(http.StatusInternalServerError)
+// 		} else {
+// 			w.Write(marshalled)
+// 			w.WriteHeader(http.StatusOK)
+// 		}
+// 	}
+// }
 
-func GetPayment(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
+// func GetPayment(w http.ResponseWriter, r *http.Request) {
+// 	ctx := context.Background()
 
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		log.Fatalf("error reading bodyBytes: %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-	}
+// 	bodyBytes, err := io.ReadAll(r.Body)
+// 	if err != nil {
+// 		log.Fatalf("error reading bodyBytes: %v\n", err)
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 	}
 
-	paymentID := string(bodyBytes)
+// 	paymentID := string(bodyBytes)
 
-	rdr, err := s.MSGBCKT.Object(paymentID).NewReader(ctx)
-	if err != nil {
-		log.Fatalf("error creating reader for payment: %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-	}
+// 	rdr, err := s.MSGBCKT.Object(paymentID).NewReader(ctx)
+// 	if err != nil {
+// 		log.Fatalf("error creating reader for payment: %v\n", err)
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 	}
 
-	paymentData, err := io.ReadAll(rdr)
-	if err != nil {
-		log.Fatalf("error reading payment id:%v, err:%v\n", paymentID, err)
-		w.WriteHeader(http.StatusInternalServerError)
-	}
+// 	paymentData, err := io.ReadAll(rdr)
+// 	if err != nil {
+// 		log.Fatalf("error reading payment id:%v, err:%v\n", paymentID, err)
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 	}
 
-	if _, err = w.Write(paymentData); err != nil {
-		log.Fatalf("error writing payment id:%v, err:%v\n", paymentID, err)
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-}
+// 	if _, err = w.Write(paymentData); err != nil {
+// 		log.Fatalf("error writing payment id:%v, err:%v\n", paymentID, err)
+// 		w.WriteHeader(http.StatusInternalServerError)
+// 	}
+// }
 
-func getMediaWithData(ctx context.Context, hdl *storage.BucketHandle, mediaID string) (*Down4Media, error) {
-	obj := hdl.Object(mediaID)
-	attrs, err := obj.Attrs(ctx)
-	if err != nil {
-		log.Fatalf("error getting metadata of media: %v\n", err)
-		return nil, err
-	}
-	rdr, err := obj.NewReader(ctx)
-	if err != nil {
-		log.Fatalf("error creating reader for media: %v\n", err)
-		return nil, err
-	}
-	mediaData, err := io.ReadAll(rdr)
-	if err != nil {
-		log.Fatalf("error reading media: %v\n", err)
-		return nil, err
-	}
+// func getMediaWithData(ctx context.Context, hdl *storage.BucketHandle, mediaID string) (*Down4Media, error) {
+// 	obj := hdl.Object(mediaID)
+// 	attrs, err := obj.Attrs(ctx)
+// 	if err != nil {
+// 		log.Fatalf("error getting metadata of media: %v\n", err)
+// 		return nil, err
+// 	}
+// 	rdr, err := obj.NewReader(ctx)
+// 	if err != nil {
+// 		log.Fatalf("error creating reader for media: %v\n", err)
+// 		return nil, err
+// 	}
+// 	mediaData, err := io.ReadAll(rdr)
+// 	if err != nil {
+// 		log.Fatalf("error reading media: %v\n", err)
+// 		return nil, err
+// 	}
 
-	down4Media := Down4Media{
-		Identifier: mediaID,
-		Data:       base64.StdEncoding.EncodeToString(mediaData),
-		Metadata:   attrs.Metadata,
-	}
-	return &down4Media, nil
-}
+// 	down4Media := Down4Media{
+// 		Identifier: mediaID,
+// 		Data:       base64.StdEncoding.EncodeToString(mediaData),
+// 		Metadata:   attrs.Metadata,
+// 	}
+// 	return &down4Media, nil
+// }
 
 func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
@@ -407,7 +408,7 @@ func getMessagingTokens(ctx context.Context, ids []string, ch chan *string, ech 
 	for _, id := range ids {
 		id_ := id
 		go func() {
-			userTokenRef := s.RTDB.NewRef("Users/" + id_ + "/tkn/")
+			userTokenRef := s.RTDB.NewRef("Users/" + id_ + "/token/")
 			var token string
 			if err := userTokenRef.Get(ctx, &token); err != nil {
 				ech <- &err
@@ -418,16 +419,16 @@ func getMessagingTokens(ctx context.Context, ids []string, ch chan *string, ech 
 	}
 }
 
-func getMediaMetadata(ctx context.Context, mediaID string) (*map[string]string, error) {
-	metadata, err := s.MSGBCKT.Object(mediaID).Attrs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &metadata.Metadata, nil
-}
+// func getMediaMetadata(ctx context.Context, mediaID string) (*map[string]string, error) {
+// 	metadata, err := s.MSGBCKT.Object(mediaID).Attrs(ctx)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return &metadata.Metadata, nil
+// }
 
 func updateActivity(ctx context.Context, uid string) error {
-	err := s.RTDB.NewRef("Users/"+uid+"/ac").Set(ctx, unixMilliseconds())
+	err := s.RTDB.NewRef("Users/"+uid+"/activity").Set(ctx, unixMilliseconds())
 	return err
 }
 
@@ -446,27 +447,27 @@ func pushEvent(ctx context.Context, targets []string, ch chan bool, ech chan *er
 	}
 }
 
-func uploadNodeMedia(ctx context.Context, media Down4Media) error {
-	obj := s.NDBCKT.Object(media.Identifier)
-	w := obj.NewWriter(ctx)
+// func uploadNodeMedia(ctx context.Context, media Down4Media) error {
+// 	obj := s.NDBCKT.Object(media.Identifier)
+// 	w := obj.NewWriter(ctx)
 
-	mediadata, err := base64.StdEncoding.DecodeString(media.Data)
-	if err != nil {
-		return err
-	}
+// 	mediadata, err := base64.StdEncoding.DecodeString(media.Data)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	w.Write(mediadata)
-	if err := w.Close(); err != nil {
-		return err
-	}
-	obj.Update(ctx, storage.ObjectAttrsToUpdate{
-		Metadata: media.Metadata,
-	})
-	return nil
-}
+// 	w.Write(mediadata)
+// 	if err := w.Close(); err != nil {
+// 		return err
+// 	}
+// 	obj.Update(ctx, storage.ObjectAttrsToUpdate{
+// 		Metadata: media.Metadata,
+// 	})
+// 	return nil
+// }
 
 func getNode(ctx context.Context, id string, nodeChan chan *FullNode, errChan chan *error) {
-	var fsn FireStoreNode
+	var fsn map[string]interface{}
 	snap, err := s.FS.Collection("Nodes").Doc(id).Get(ctx)
 	if err != nil {
 		errChan <- &err
@@ -480,27 +481,61 @@ func getNode(ctx context.Context, id string, nodeChan chan *FullNode, errChan ch
 		return
 	}
 
-	d4media, err := getMediaWithData(ctx, s.NDBCKT, fsn.ImageID)
-	if err != nil {
-		errChan <- &err
-		log.Printf("error reading image data from bucket reader: %v\n", err)
-		return
+	metadataChan := make(chan *map[string]string, 1)
+	dataChan := make(chan *string, 1)
+	errorChan := make(chan *error, 2)
+
+	mediaID, isString := fsn["mediaID"].(string)
+
+	var data string
+	var metadata map[string]string
+	if isString && len(mediaID) != 0 {
+		obj := s.NDBCKT.Object(mediaID)
+		go func() {
+			if att, err := obj.Attrs(ctx); err != nil {
+				log.Printf("Sending error")
+				errChan <- &err
+			} else {
+				log.Printf("Sending metadata")
+				metadataChan <- &att.Metadata
+			}
+
+		}()
+
+		go func() {
+			rdr, err := obj.NewReader(ctx)
+			if err != nil {
+				log.Printf("Sending error")
+				errorChan <- &err
+			}
+			if d, err := io.ReadAll(rdr); err != nil {
+				log.Printf("Sending error")
+				errChan <- &err
+			} else {
+				print("Seding data")
+				s := base64.StdEncoding.EncodeToString(d)
+				dataChan <- &s
+			}
+		}()
+
+		for i := 0; i < 2; i++ {
+			select {
+			case e := <-errChan:
+				log.Printf("Error getting media info for mediaID: %v, err: %v\n", mediaID, *e)
+			case d := <-dataChan:
+				data = *d
+			case m := <-metadataChan:
+				metadata = *m
+
+			}
+		}
+
 	}
 
 	node := FullNode{
-		Identifier: fsn.Identifier,
-		Neuter:     fsn.Neuter,
-		Type:       fsn.Type,
-		Name:       fsn.Name,
-		Lastname:   fsn.Lastname,
-		Image:      *d4media,
-		Messages:   fsn.Messages,
-		Group:      fsn.Group,
-		Words:      fsn.Words,
-		Friends:    fsn.Friends,
-		Admins:     fsn.Admins,
-		Childs:     fsn.Childs,
-		Parents:    fsn.Parents,
+		Node:     fsn,
+		Metadata: metadata,
+		Data:     data,
 	}
 
 	nodeChan <- &node
@@ -510,17 +545,17 @@ func unixMilliseconds() int64 {
 	return time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
-func nByteBase64ID(n int) string {
-	buf := make([]byte, n)
-	rand.Read(buf)
-	return base64.StdEncoding.EncodeToString(buf)
-}
+// func nByteBase64ID(n int) string {
+// 	buf := make([]byte, n)
+// 	rand.Read(buf)
+// 	return base64.StdEncoding.EncodeToString(buf)
+// }
 
-func nByteBase58ID(n int) string {
-	buf := make([]byte, n)
-	rand.Read(buf)
-	return base58.Encode(buf)
-}
+// func nByteBase58ID(n int) string {
+// 	buf := make([]byte, n)
+// 	rand.Read(buf)
+// 	return base58.Encode(buf)
+// }
 
 // func pushPay(ctx context.Context, objectID string, targets []string, ch chan bool, ech chan *error) {
 // 	for _, target := range targets {
