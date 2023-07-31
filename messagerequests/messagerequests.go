@@ -13,15 +13,12 @@ import (
 )
 
 type messageRequest struct {
-	Tokens         []string          `json:"t"`
-	SenderID       string            `json:"s"`
-	SenderName     string            `json:"sn"`
-	GroupName      string            `json:"gn"`
-	Header         string            `json:"h"`
-	Data           map[string]string `json:"d"`
-	Body           string            `json:"b"`
-	GroupMediaURL  string            `json:"gtn"`
-	SenderMediaURL string            `json:"stn"`
+	Tokens    []string          `json:"t"`
+	Header    string            `json:"h"`
+	Data      map[string]string `json:"d"`
+	Body      string            `json:"b"`
+	SmallIcon string            `json:"si"`
+	BigIcon   string            `json:"bi"`
 }
 
 var msgr *messaging.Client
