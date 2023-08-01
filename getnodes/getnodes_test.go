@@ -3,14 +3,12 @@ package getnodes
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"testing"
 )
 
 func TestGetNodes(t *testing.T) {
-
-	uniques := "golden golden golden golden golden"
+	uniques := "moon madara"
 
 	body := bytes.NewReader([]byte(uniques))
 
@@ -21,10 +19,12 @@ func TestGetNodes(t *testing.T) {
 
 	var rsp []map[string]interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &rsp); err != nil {
-		fmt.Printf("error unmarshalling res: %v\n", err)
+		t.Fatalf("error unmarshalling res: %v\n", err)
 	}
 
+	t.Logf("TestGetNodes: found %d nodes\n", len(rsp))
+
 	for i, v := range rsp {
-		fmt.Printf("\nnode#%d: %v\n", i, v)
+		t.Logf("#%d -- node: %v\n", i, v)
 	}
 }

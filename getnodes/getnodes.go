@@ -22,20 +22,21 @@ func init() {
 
 func getFullID(ctx context.Context, unique string, ec chan *error, sc chan *string) {
 	ref, err := server.Client.Firestore.Collection("users").Doc(unique).Get(ctx)
-
 	if err != nil {
 		ec <- &err
+		return
 	}
 
 	fullID, err := ref.DataAt("id")
 	if err != nil {
 		ec <- &err
+		return
 	}
 
 	if s, ok := fullID.(string); ok {
 		sc <- &s
 	} else {
-		err = fmt.Errorf("error: users/%v/id isn't a string", unique)
+		err = fmt.Errorf("error: users/%v/id isn't a string, it's a %T\n", unique, fullID)
 		ec <- &err
 	}
 }
@@ -46,6 +47,7 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatalf("error reading request body: %v\n", err)
 	}
+
 	usernames := strings.Split(string(raw), " ")
 	sc := make(chan *string, len(usernames))
 	ec := make(chan *error, len(usernames))
@@ -60,42 +62,34 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 		case id := <-sc:
 			fullIDs = append(fullIDs, id)
 		case e := <-ec:
-			log.Printf("error getting fullID: %v\n", *e)
+			log.Printf("error getting a fullID: %v\n", *e)
 		}
 	}
 
 	nc := make(chan *map[string]interface{}, len(fullIDs))
 	nodes := make([]*map[string]interface{}, 0, len(fullIDs))
+	ec2 := make(chan *error, len(fullIDs))
 
 	for _, id := range fullIDs {
-		go getNode(ctx, *id, ec, nc)
+		go getNode(ctx, *id, ec2, nc)
 	}
 
 	for range fullIDs {
 		select {
 		case n := <-nc:
 			nodes = append(nodes, n)
-		case e := <-ec:
-			log.Print(*e)
+		case e := <-ec2:
+			log.Printf("error getting a full node: %v\n", *e)
 		}
 	}
 
-	fmt.Printf("marshalling the nodes: %v\n", nodes)
 	marsh, err := json.Marshal(nodes)
 	if err != nil {
 		log.Fatalf("error marshaling nodes: %v\n", err)
 	}
 
-	log.Printf("writing %v bytes of data in response\n", len(marsh))
-
-	var jeff []interface{}
-	json.Unmarshal(marsh, &jeff)
-	fmt.Printf("unmarshalled: %v\n", jeff)
-
-	if n, err := w.Write(marsh); err != nil {
+	if _, err := w.Write(marsh); err != nil {
 		log.Printf("error writing data to w, err: %v\n", err)
-	} else {
-		log.Printf("wrote %v bytes to w\n", n)
 	}
 }
 
@@ -105,13 +99,16 @@ func getNodeMedia(ctx context.Context, id string) (string, map[string]string, er
 		return "", nil, err
 	}
 
-	obj := server.Client.Shards[reg][shrd].StaticBucket.Object(id)
+	bckt := server.Client.Shards[reg][shrd].StaticBucket
+	sUrl, err := bckt.SignedURL(id, server.Client.SignedOpts)
+
+	obj := bckt.Object(id)
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
 		return "", nil, err
 	}
 
-	return attrs.MediaLink, attrs.Metadata, nil
+	return sUrl, attrs.Metadata, nil
 }
 
 func getNode(ctx context.Context, id string, ec chan *error, nc chan *map[string]interface{}) {
@@ -132,18 +129,21 @@ func getNode(ctx context.Context, id string, ec chan *error, nc chan *map[string
 	db = server.Client.Shards[reg][shrd].RealtimeDB
 	if err = db.NewRef("users/"+id).Get(ctx, &node); err != nil {
 		ec <- &err
+		return
 	}
 
 	full["node"] = &node
 
 	mediaID, ok := node["mediaID"].(string)
 	if !ok {
+		log.Printf("could not get node media and link :: mediaID isn't a string")
 		nc <- &full
 		return
 	}
 
 	link, metadata, err = getNodeMedia(ctx, mediaID)
 	if err != nil {
+		log.Printf("could not get node media and link :: %v\n", err)
 		nc <- &full
 		return
 	}

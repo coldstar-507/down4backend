@@ -4,14 +4,8 @@ go 1.20
 
 require (
 	firebase.google.com/go/v4 v4.8.0
-	github.com/coldstar-507/down4backend/server v0.0.0
-	github.com/coldstar-507/down4backend/utils v0.0.0
-)
-
-replace (
-	github.com/coldstar-507/down4backend/server v0.0.0 => /home/scott/dev/down4backend/server
-	github.com/coldstar-507/down4backend/utils v0.0.0 => /home/scott/dev/down4backend/utils
-
+	github.com/coldstar-507/down4backend/server v0.0.0-20230801213213-962be4da4ee5
+	github.com/coldstar-507/down4backend/utils v0.0.0-20230728180436-9412102c5a96
 )
 
 require (
