@@ -35,13 +35,6 @@ var Client *server
 
 func ServerInit(ctx context.Context) {
 
-	// p := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
-	// saKey, err := ioutil.ReadFile(p)
-	// if err != nil {
-	// 	log.Fatalln(err)
-	// }
-	// cfg, err := google.JWTConfigFromJSON(saKey)
-
 	app, err := firebase.NewApp(ctx, &firebase.Config{})
 	if err != nil {
 		log.Fatalf("error initializing app: %v\n", err)
