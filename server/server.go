@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"io/ioutil"
-	"os"
 	"time"
 
 	"log"
@@ -13,7 +11,6 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/db"
 	"firebase.google.com/go/v4/messaging"
-	"golang.org/x/oauth2/google"
 )
 
 type serverShard struct {
@@ -38,12 +35,12 @@ var Client *server
 
 func ServerInit(ctx context.Context) {
 
-	p := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
-	saKey, err := ioutil.ReadFile(p)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	cfg, err := google.JWTConfigFromJSON(saKey)
+	// p := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	// saKey, err := ioutil.ReadFile(p)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+	// cfg, err := google.JWTConfigFromJSON(saKey)
 
 	app, err := firebase.NewApp(ctx, &firebase.Config{})
 	if err != nil {
@@ -66,10 +63,8 @@ func ServerInit(ctx context.Context) {
 	}
 
 	sUrls := &storage.SignedURLOptions{
-		GoogleAccessID: cfg.Email,
-		PrivateKey:     cfg.PrivateKey,
-		Method:         "GET",
-		Expires:        time.Now().Add(time.Hour * 24 * 4),
+		Method:  "GET",
+		Expires: time.Now().Add(time.Hour * 24 * 4),
 	}
 
 	db_am_1, _ := app.DatabaseWithURL(ctx, "https://down4-26ee1-fd90e-us1.firebaseio.com/")
