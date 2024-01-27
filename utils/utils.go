@@ -1,10 +1,45 @@
 package utils
 
 import (
+	"crypto/rand"
 	"fmt"
 	"strconv"
 	"strings"
 )
+
+
+
+func CopyMap[K comparable, J any](src, dst map[K]J) {
+	for k, v := range src {
+		dst[k] = v
+	}
+}
+
+func MaxKey[T comparable](m map[T]int) string {
+	mr := func(a [2]interface{}, k T, v int) [2]interface{} {
+		if v >= a[1].(int) {
+			return [2]interface{}{k, v}
+		} else {
+			return a
+		}
+	}
+
+	maxReg := MapReduce(m, [2]interface{}{"", 0}, mr)[0].(string)
+	return maxReg
+}
+
+func RandomBytes(n int) []byte {
+	buf := make([]byte, 0, n)
+	if _, err := rand.Read(buf); err != nil {
+		panic(err)
+	}
+	return buf
+}
+
+func MakeID(unik, region string, ishard int) string {
+	istr := strconv.Itoa(ishard)
+	return unik + "~" + region + "~" + istr
+}
 
 // Returns unique, region, iShard
 func ParseID(id string) (string, string, int, error) {
@@ -20,6 +55,28 @@ func ParseID(id string) (string, string, int, error) {
 	}
 
 	return uni, reg, iShrd, nil
+}
+
+func Reduce[T any, E any](l []T, acc E, combine func(a E, b T) E) E {
+	for _, x := range l {
+		acc = combine(acc, x)
+	}
+	return acc
+}
+
+func MapReduce[K comparable, V any, R any](m map[K]V, acc R, combine func(a R, k K, v V) R) R {
+	for k, v := range m {
+		acc = combine(acc, k, v)
+	}
+	return acc
+}
+
+func Map[T any, E any](l []T, f func(e T) E) []E {
+	r := make([]E, len(l))
+	for i, x := range l {
+		r[i] = f(x)
+	}
+	return r
 }
 
 func Flatten[T any](m [][]T) []T {
@@ -43,6 +100,24 @@ func Flattenu[T comparable](m [][]T) []T {
 		}
 	}
 	return u
+}
+
+func Every[T any](l []T, f func(T) bool) bool {
+	for _, x := range l {
+		if !f(x) {
+			return false
+		}
+	}
+	return true
+}
+
+func Any[T any](l []T, f func(T) bool) bool {
+	for _, x := range l {
+		if f(x) {
+			return true
+		}
+	}
+	return false
 }
 
 func Contains[T comparable](e T, a []T) bool {

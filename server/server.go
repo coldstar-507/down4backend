@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"log"
@@ -11,6 +12,7 @@ import (
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/db"
 	"firebase.google.com/go/v4/messaging"
+	"google.golang.org/api/option"
 )
 
 type serverShard struct {
@@ -20,12 +22,12 @@ type serverShard struct {
 }
 
 const (
-	nShard  = 2
-	nRegion = 3
+	N_SHARD  = 2
+	N_REGION = 3
 )
 
 type server struct {
-	Shards     map[string]([nShard]serverShard)
+	Shards     map[string]([N_SHARD]serverShard)
 	Messager   *messaging.Client
 	Firestore  *firestore.Client
 	SignedOpts *storage.SignedURLOptions
@@ -33,9 +35,11 @@ type server struct {
 
 var Client *server
 
-func ServerInit(ctx context.Context) {
 
-	app, err := firebase.NewApp(ctx, &firebase.Config{})
+func ServerInit(ctx context.Context) {
+	servAcc := os.Getenv("FIREBASE_CONFIG")
+	opt := option.WithCredentialsFile(servAcc)
+	app, err := firebase.NewApp(ctx, nil, opt)
 	if err != nil {
 		log.Fatalf("error initializing app: %v\n", err)
 	}
@@ -85,7 +89,7 @@ func ServerInit(ctx context.Context) {
 		SignedOpts: sUrls,
 		Firestore:  fs,
 		Messager:   msgr,
-		Shards: map[string][nShard]serverShard{
+		Shards: map[string][N_SHARD]serverShard{
 			"america": {
 				serverShard{
 					RealtimeDB:   db_am_1,

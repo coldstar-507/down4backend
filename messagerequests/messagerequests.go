@@ -2,40 +2,99 @@ package messagerequests
 
 import (
 	"context"
-	"fmt"
 
 	"encoding/json"
 	"log"
 	"net/http"
 
-	firebase "firebase.google.com/go"
-	"firebase.google.com/go/messaging"
+	"firebase.google.com/go/v4/messaging"
+	"github.com/coldstar-507/down4backend/server"
+	"github.com/coldstar-507/down4backend/utils"
 )
 
-type messageRequest struct {
-	Tokens    []string          `json:"t"`
-	Header    string            `json:"h"`
-	Data      map[string]string `json:"d"`
-	Body      string            `json:"b"`
-	SmallIcon string            `json:"si"`
-	BigIcon   string            `json:"bi"`
+type mt struct {
+	UserID    string `json:"uid"`
+	DeviceID  string `json:"dev"`
+	Token     string `json:"tkn"`
+	ShowNotif bool   `json:"ntf"`
+	DoPush    bool   `json:"psh"`
 }
 
-var msgr *messaging.Client
+type mq struct {
+	Mts      []mt   `json:"m"`
+	Push     string `json:"p"`
+	Header   string `json:"h"`
+	Body     string `json:"b"`
+	SenderID string `json:"s"`
+	RootID   string `json:"r"`
+}
 
 func init() {
 	ctx := context.Background()
+	server.ServerInit(ctx)
+}
 
-	app, err := firebase.NewApp(ctx, &firebase.Config{})
+func PushData(ctx context.Context, userID, deviceID, payload string) error {
+	uni, reg, shrd, err := utils.ParseID(userID)
 	if err != nil {
-		log.Fatalf("error initializing app: %v\n", err)
+		return err
+	}
+	srv := server.Client.Shards[reg][shrd].RealtimeDB
+	ref := srv.NewRef("nodes/" + uni + "/queues/" + deviceID)
+	if _, err = ref.Push(ctx, payload); err != nil {
+		return err
+	}
+	return nil
+}
+
+func PushNotification(ctx context.Context, token, body, header, rootID, senderID string) error {
+	m := &messaging.Message{
+		Token: token,
+		Data: map[string]string{
+			"b": body,
+			"h": header,
+			"r": rootID,
+			"s": senderID,
+		},
+	}
+	_, err := server.Client.Messager.Send(ctx, m)
+	return err
+}
+
+func handlePush(ctx context.Context, q *mq, mt mt, ec chan *error, ac chan bool, mc chan *messaging.Message) {
+	if mt.DoPush && len(q.Push) > 0 {
+		uni, reg, shrd, err := utils.ParseID(mt.UserID)
+		if err != nil {
+			ec <- &err
+			return
+		}
+		srv := server.Client.Shards[reg][shrd].RealtimeDB
+		ref := srv.NewRef("nodes/" + uni + "/queues/" + mt.DeviceID)
+		if _, err = ref.Push(ctx, q.Push); err != nil {
+			ec <- &err
+			return
+		}
 	}
 
-	msgr, err = app.Messaging(ctx)
-	if err != nil {
-		log.Fatalf("error initializing messager: %v\n", err)
+	if mt.ShowNotif {
+		m := &messaging.Message{
+			Token: mt.Token,
+			Data: map[string]string{
+				"b": q.Body,
+				"h": q.Header,
+				"r": q.RootID,
+				"s": q.SenderID,
+			},
+		}
+		mc <- m
+	} else {
+		ac <- true
 	}
+}
 
+func prettyPrint(i interface{}) string {
+	s, _ := json.MarshalIndent(i, "", "\t")
+	return string(s)
 }
 
 func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
@@ -46,35 +105,35 @@ func HandleMessageRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf(errMsg, a)
 	}
 
-	var req messageRequest
+	var req mq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		onFatalErrf("error decoding request json: %v", err)
 	}
 
-	fmt.Printf("msgReq: %v\n", req)
+	n := len(req.Mts)
+	ec := make(chan *error, n)
+	ac := make(chan bool, n)
+	mc := make(chan *messaging.Message, n)
 
-	br, err := msgr.SendMulticast(ctx, &messaging.MulticastMessage{
-		Tokens: req.Tokens,
-		Data:   req.Data,
-		Notification: &messaging.Notification{
-			Title: req.Header,
-			Body:  req.Body,
-		},
-	})
-
-	fmt.Printf("success count: %v\n", br.SuccessCount)
-
-	if err != nil {
-		onFatalErrf("error multicasting message: %v", err)
+	for _, v := range req.Mts {
+		go handlePush(ctx, &req, v, ec, ac, mc)
 	}
 
-	jsn, err := json.Marshal(br)
-	if err != nil {
-		onFatalErrf("error marshalling batch response: %v", err)
+	msgs := make([]*messaging.Message, 0)
+	for i := 0; i < n; i++ {
+		select {
+		case m := <-mc:
+			msgs = append(msgs, m)
+			break
+		case <-ac:
+			break
+		case e := <-ec:
+			log.Printf("error handleing push: %v\n", *e)
+			break
+		}
 	}
 
-	if _, err = w.Write(jsn); err != nil {
-		onFatalErrf("error writing response: %v", err)
+	if _, err := server.Client.Messager.SendAll(ctx, msgs); err != nil {
+		log.Printf("error sending notifs: %v\n", err)
 	}
-
 }

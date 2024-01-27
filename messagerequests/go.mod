@@ -1,8 +1,12 @@
 module github.com/coldstar-507/down4backend/messagerequests
 
-go 1.20
+go 1.21
 
-require github.com/coldstar-507/down4backend/server v0.0.0
+require (
+	firebase.google.com/go/v4 v4.8.0
+	github.com/coldstar-507/down4backend/server v0.0.0-20230802001408-3ac1140cc064
+	github.com/coldstar-507/down4backend/utils v0.0.0-20230802001408-3ac1140cc064
+)
 
 require (
 	cloud.google.com/go v0.100.2 // indirect
@@ -10,8 +14,6 @@ require (
 	cloud.google.com/go/firestore v1.6.1 // indirect
 	cloud.google.com/go/iam v0.3.0 // indirect
 	cloud.google.com/go/storage v1.22.1 // indirect
-	firebase.google.com/go v3.13.0+incompatible
-	firebase.google.com/go/v4 v4.8.0 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.7 // indirect
@@ -30,9 +32,4 @@ require (
 	google.golang.org/genproto v0.0.0-20220518221133-4f43b3371335 // indirect
 	google.golang.org/grpc v1.46.0 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
-)
-
-replace (
-	github.com/coldstar-507/down4backend/server v0.0.0 => /home/scott/dev/down4backend/server
-	github.com/coldstar-507/down4backend/utils v0.0.0 => /home/scott/dev/down4backend/utils
 )
