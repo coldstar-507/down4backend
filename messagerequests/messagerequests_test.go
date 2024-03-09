@@ -34,6 +34,6 @@ func TestMessageRequests(t *testing.T) {
 	r := httptest.NewRequest("POST", "/", bytes.NewReader(js))
 	w := httptest.NewRecorder()
 
-	HandleMessageRequest(w, r)
+	ProcessMessage(w, r)
 
 }

@@ -10,7 +10,6 @@ import (
 	"log"
 	"net/http"
 
-	"firebase.google.com/go/v4/db"
 	"github.com/coldstar-507/down4backend/server"
 	"github.com/coldstar-507/down4backend/utils"
 )
@@ -20,24 +19,27 @@ func init() {
 	server.ServerInit(ctx)
 }
 
-func getFullID(ctx context.Context, unique string, ec chan *error, sc chan *string) {
+func getFullId(ctx context.Context, unique string, sc chan *string) {
 	ref, err := server.Client.Firestore.Collection("users").Doc(unique).Get(ctx)
 	if err != nil {
-		ec <- &err
+		log.Printf("error: getting doc at user/%s: %v\n", unique, err.Error())
+		sc <- nil
 		return
 	}
 
-	fullID, err := ref.DataAt("id")
+	fullId, err := ref.DataAt("id")
 	if err != nil {
-		ec <- &err
+		log.Printf("error: decoding userData at user/%s: %v\n", unique, err.Error())
+		sc <- nil
 		return
 	}
 
-	if s, ok := fullID.(string); ok {
+	if s, ok := fullId.(string); ok {
 		sc <- &s
 	} else {
-		err = fmt.Errorf("error: users/%v/id isn't a string, it's a %T\n", unique, fullID)
-		ec <- &err
+		err = fmt.Errorf("error: users/%v/id isn't a string, it's a %T\n", unique, fullId)
+		log.Printf(err.Error())
+		sc <- nil
 	}
 }
 
@@ -50,36 +52,34 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 
 	usernames := strings.Split(string(raw), " ")
 	sc := make(chan *string, len(usernames))
-	ec := make(chan *error, len(usernames))
-	fullIDs := make([]*string, 0, len(usernames))
+	fullIds := make([]*string, 0, len(usernames))
 
 	for _, v := range usernames {
-		go getFullID(ctx, v, ec, sc)
+		go getFullId(ctx, v, sc)
 	}
 
 	for range usernames {
 		select {
 		case id := <-sc:
-			fullIDs = append(fullIDs, id)
-		case e := <-ec:
-			log.Printf("error getting a fullID: %v\n", *e)
+			if id != nil {
+				fullIds = append(fullIds, id)
+			}
 		}
 	}
 
-	nc := make(chan *map[string]interface{}, len(fullIDs))
-	nodes := make([]*map[string]interface{}, 0, len(fullIDs))
-	ec2 := make(chan *error, len(fullIDs))
-
-	for _, id := range fullIDs {
-		go getNode(ctx, *id, ec2, nc)
+	nc := make(chan *map[string]interface{}, len(fullIds))
+	nodes := make([]*map[string]interface{}, 0, len(fullIds))
+	for _, id := range fullIds {
+		fmt.Printf("getting node for id=%s\n", *id)
+		go getNode(ctx, *id, nc)
 	}
 
-	for range fullIDs {
+	for range fullIds {
 		select {
 		case n := <-nc:
-			nodes = append(nodes, n)
-		case e := <-ec2:
-			log.Printf("error getting a full node: %v\n", *e)
+			if n != nil {
+				nodes = append(nodes, n)
+			}
 		}
 	}
 
@@ -93,16 +93,11 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getNodeMedia(ctx context.Context, id string) (string, map[string]string, error) {
-	_, reg, shrd, err := utils.ParseID(id)
-	if err != nil {
-		return "", nil, err
-	}
+func getNodeMedia(ctx context.Context, id utils.ComposedId) (string, map[string]string, error) {
+	bckt := id.ServerShard().StaticBucket
+	sUrl, err := bckt.SignedURL(id.Unik, server.Client.SignedOpts)
 
-	bckt := server.Client.Shards[reg][shrd].StaticBucket
-	sUrl, err := bckt.SignedURL(id, server.Client.SignedOpts)
-
-	obj := bckt.Object(id)
+	obj := bckt.Object(id.Unik)
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
 		return "", nil, err
@@ -111,37 +106,30 @@ func getNodeMedia(ctx context.Context, id string) (string, map[string]string, er
 	return sUrl, attrs.Metadata, nil
 }
 
-func getNode(ctx context.Context, id string, ec chan *error, nc chan *map[string]interface{}) {
+func getNode(ctx context.Context, idStr string, nc chan *map[string]interface{}) {
 	var (
-		err      error
-		db       *db.Client
 		full     map[string]interface{} = make(map[string]interface{}, 3)
 		node     map[string]interface{}
-		link     string
-		metadata map[string]string
 	)
-	_, reg, shrd, err := utils.ParseID(id)
-	if err != nil {
-		ec <- &err
-		return
-	}
 
-	db = server.Client.Shards[reg][shrd].RealtimeDB
-	if err = db.NewRef("users/"+id).Get(ctx, &node); err != nil {
-		ec <- &err
+	id := utils.ParseComposedId(utils.Tailed(idStr))
+	db := id.ServerShard().RealtimeDB
+	if err := db.NewRef("roots/"+id.Unik+"/node").Get(ctx, &node); err != nil {
+		nc <- nil
 		return
 	}
 
 	full["node"] = &node
 
-	mediaID, ok := node["mediaID"].(string)
+	mediaIdStr, ok := node["mediaId"].(string)
 	if !ok {
 		log.Printf("could not get node media and link :: mediaID isn't a string")
 		nc <- &full
 		return
 	}
 
-	link, metadata, err = getNodeMedia(ctx, mediaID)
+	mediaId := utils.ParseComposedId(utils.Tailed(mediaIdStr))
+	link, metadata, err := getNodeMedia(ctx, mediaId)
 	if err != nil {
 		log.Printf("could not get node media and link :: %v\n", err)
 		nc <- &full

@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/firestore v1.14.0
 	cloud.google.com/go/storage v1.36.0
 	firebase.google.com/go/v4 v4.13.0
+	google.golang.org/api v0.150.0
 )
 
 require (
@@ -31,7 +32,6 @@ require (
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
-	google.golang.org/api v0.150.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/appengine/v2 v2.0.2 // indirect
 	google.golang.org/genproto v0.0.0-20231016165738-49dd2c1f3d0b // indirect

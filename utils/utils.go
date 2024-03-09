@@ -2,14 +2,89 @@ package utils
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
+	"github.com/btcsuite/btcd/btcutil/base58"
+	"github.com/coldstar-507/down4backend/server"
 	"strconv"
 	"strings"
+	"time"
 )
 
+type ComposedId struct {
+	Region string
+	Shard  int
+	Unik   string
+}
 
+func Tailed(s string) string {
+	return s[:len(s)-1]
+}
+
+func ParseComposedId(s string) ComposedId {
+	unik, reg, shrd, _ := Decompose(s)
+	return ComposedId{Unik: unik, Region: reg, Shard: shrd}
+}
+
+func ComposedIdsOfRoot(r string) []ComposedId {
+	sp := strings.Split(r, "^")
+	roots := make([]ComposedId, 0, 2)
+	for _, x := range sp {
+		u, r, s, _ := Decompose(x)
+		u_ := u[:len(u)-1]
+		roots = append(roots, ComposedId{Unik: u_, Region: r, Shard: s})
+	}
+	return roots
+}
+
+func UnikRoot(ids []ComposedId) string {
+	return strings.Join(Map(ids, func(rt ComposedId) string { return rt.Unik }), "!")
+}
+
+func ParseMessageId(s string) (string, string, []ComposedId) {
+	vals := strings.Split(s[:len(s)-1], "@")
+	unik, rootStr := vals[0], vals[1]
+	composedIds := ComposedIdsOfRoot(rootStr)
+	return unik, UnikRoot(composedIds), composedIds
+}
+
+func (c *ComposedId) ServerShard() server.ServerShard {
+	return server.Client.Shards[c.Region][c.Shard]
+}
+
+func UnixMilli() int64 {
+	return time.Now().UnixMilli()
+}
+
+func MakePushKey() string {
+	buf := make([]byte, 16)
+	binary.BigEndian.PutUint64(buf, uint64(UnixMilli()))
+	rand.Read(buf[8:])
+	return base58.Encode(buf)
+}
+
+func ForEach[T any](l []T, f func(t T)) {
+	for _, x := range l {
+		f(x)
+	}
+}
+
+func Map[T any, E any](l []T, f func(e T) E) []E {
+	r := make([]E, len(l))
+	for i, x := range l {
+		r[i] = f(x)
+	}
+	return r
+}
 
 func CopyMap[K comparable, J any](src, dst map[K]J) {
+	for k, v := range src {
+		dst[k] = v
+	}
+}
+
+func CopyMap_[K comparable, J any](src map[K]J) {
+	dst := make(map[K]J, len(src))
 	for k, v := range src {
 		dst[k] = v
 	}
@@ -36,19 +111,19 @@ func RandomBytes(n int) []byte {
 	return buf
 }
 
-func MakeID(unik, region string, ishard int) string {
-	istr := strconv.Itoa(ishard)
-	return unik + "~" + region + "~" + istr
+func (c *ComposedId) ToString() string {
+	istr := strconv.Itoa(c.Shard)
+	return c.Unik + "-" + c.Region + "-" + istr
 }
 
 // Returns unique, region, iShard
-func ParseID(id string) (string, string, int, error) {
-	m := strings.Split(id, "~")
-	if len(m) != 3 {
+func Decompose(id string) (string, string, int, error) {
+	vals := strings.Split(id, "-")
+	if len(vals) != 3 {
 		return "", "", 0, fmt.Errorf("id isn't a composedID: %v", id)
 	}
 
-	var uni, reg, shrd string = m[0], m[1], m[2]
+	var uni, reg, shrd string = vals[0], vals[1], vals[2]
 	iShrd, err := strconv.Atoi(shrd)
 	if err != nil {
 		return "", "", 0, err
@@ -69,14 +144,6 @@ func MapReduce[K comparable, V any, R any](m map[K]V, acc R, combine func(a R, k
 		acc = combine(acc, k, v)
 	}
 	return acc
-}
-
-func Map[T any, E any](l []T, f func(e T) E) []E {
-	r := make([]E, len(l))
-	for i, x := range l {
-		r[i] = f(x)
-	}
-	return r
 }
 
 func Flatten[T any](m [][]T) []T {

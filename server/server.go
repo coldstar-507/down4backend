@@ -15,7 +15,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-type serverShard struct {
+type ServerShard struct {
 	RealtimeDB   *db.Client
 	TempBucket   *storage.BucketHandle
 	StaticBucket *storage.BucketHandle
@@ -27,7 +27,7 @@ const (
 )
 
 type server struct {
-	Shards     map[string]([N_SHARD]serverShard)
+	Shards     map[string]([N_SHARD]ServerShard)
 	Messager   *messaging.Client
 	Firestore  *firestore.Client
 	SignedOpts *storage.SignedURLOptions
@@ -89,38 +89,38 @@ func ServerInit(ctx context.Context) {
 		SignedOpts: sUrls,
 		Firestore:  fs,
 		Messager:   msgr,
-		Shards: map[string][N_SHARD]serverShard{
+		Shards: map[string][N_SHARD]ServerShard{
 			"america": {
-				serverShard{
+				ServerShard{
 					RealtimeDB:   db_am_1,
 					TempBucket:   tmp_am_1,
 					StaticBucket: st_am_1,
 				},
-				serverShard{
+				ServerShard{
 					RealtimeDB:   db_am_2,
 					TempBucket:   tmp_am_2,
 					StaticBucket: st_am_2,
 				},
 			},
 			"asia": {
-				serverShard{
+				ServerShard{
 					RealtimeDB:   db_as_1,
 					TempBucket:   tmp_as_1,
 					StaticBucket: st_as_1,
 				},
-				serverShard{
+				ServerShard{
 					RealtimeDB:   db_as_2,
 					TempBucket:   tmp_as_2,
 					StaticBucket: st_as_2,
 				},
 			},
 			"europe": {
-				serverShard{
+				ServerShard{
 					RealtimeDB:   db_eu_1,
 					TempBucket:   tmp_eu_1,
 					StaticBucket: st_eu_1,
 				},
-				serverShard{
+				ServerShard{
 					RealtimeDB:   db_eu_2,
 					TempBucket:   tmp_eu_2,
 					StaticBucket: st_eu_2,

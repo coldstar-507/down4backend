@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetNodes(t *testing.T) {
-	uniques := "moon madara"
+	uniques := "memez"
 
 	body := bytes.NewReader([]byte(uniques))
 
