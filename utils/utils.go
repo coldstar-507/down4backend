@@ -30,22 +30,27 @@ func ComposedIdsOfRoot(r string) []ComposedId {
 	sp := strings.Split(r, "^")
 	roots := make([]ComposedId, 0, 2)
 	for _, x := range sp {
-		u, r, s, _ := Decompose(x)
-		u_ := u[:len(u)-1]
-		roots = append(roots, ComposedId{Unik: u_, Region: r, Shard: s})
+		u, r, s, _ := Decompose(Tailed(x))
+		roots = append(roots, ComposedId{Unik: u, Region: r, Shard: s})
 	}
 	return roots
 }
 
-func UnikRoot(ids []ComposedId) string {
-	return strings.Join(Map(ids, func(rt ComposedId) string { return rt.Unik }), "!")
+func RootOfComposedIds(cpIds []ComposedId) string {
+	return strings.Join(Map(cpIds, func(cp ComposedId) string {
+		return cp.ToString() + "r"
+	}), "^")
 }
 
-func ParseMessageId(s string) (string, string, []ComposedId) {
-	vals := strings.Split(s[:len(s)-1], "@")
+func UnikRoot(ids []ComposedId) string {
+	return strings.Join(Map(ids, func(rt ComposedId) string { return rt.Unik }), "^")
+}
+
+func ParseMessageId(s string) (string, string, string, []ComposedId) {
+	vals := strings.Split(Tailed(s), "@")
 	unik, rootStr := vals[0], vals[1]
 	composedIds := ComposedIdsOfRoot(rootStr)
-	return unik, UnikRoot(composedIds), composedIds
+	return unik, rootStr, UnikRoot(composedIds), composedIds
 }
 
 func (c *ComposedId) ServerShard() server.ServerShard {

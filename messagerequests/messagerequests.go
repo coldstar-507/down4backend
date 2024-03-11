@@ -34,8 +34,6 @@ type MessageTarget struct {
 	DoPush    bool   `json:"psh"`
 }
 
-
-
 func init() {
 	ctx := context.Background()
 	server.ServerInit(ctx)
@@ -126,12 +124,14 @@ func pushRequest(ctx context.Context, targets []MessageTarget, push string) []er
 	return errs
 }
 
+var ErrorMessageAlreadyExist = errors.New("message already exists")
+
 func snipTransaction(ctx context.Context, mr *MessageRequest) (int, error) {
 	msgId := mr.Msg["id"]
-	_, unikRoot, composedIds := utils.ParseMessageId(msgId)
+	_, rootStr, unikRoot, composedIds := utils.ParseMessageId(msgId)
 	db := composedIds[0].ServerShard().RealtimeDB
-	tref := db.NewRef("roots/" + unikRoot + "/connection/upperSnip")
-
+	rootRef := db.NewRef("roots/" + unikRoot)
+	txRef := rootRef.Child("connection/upperSnip")
 	var k, upperSnip int
 	snipTx := func(tn rtdb.TransactionNode) (interface{}, error) {
 		if err := tn.Unmarshal(&upperSnip); err != nil {
@@ -139,41 +139,63 @@ func snipTransaction(ctx context.Context, mr *MessageRequest) (int, error) {
 		} else {
 			k = upperSnip + 1
 		}
-		cid := makeChatId(k)
-		// mr.Msg["chatNumber"] = strconv.Itoa(k)
-		wref := db.NewRef("roots/" + unikRoot + "/snips/" + cid)
-		if err := wref.Set(ctx, mr.Msg); err != nil {
+		snipId := makeChatId(k)
+		fullChatId := snipId + "@" + rootStr
+		mr.Msg["id"] = fullChatId
+		txRef_ := rootRef.Child("snips/" + snipId)
+		snipTx_ := func(tn rtdb.TransactionNode) (interface{}, error) {
+			var m map[string]interface{}
+			tn.Unmarshal(&m)
+			if len(m) == 0 {
+				return mr.Msg, nil
+			} else {
+				return nil, ErrorMessageAlreadyExist
+			}
+		}
+		if err := txRef_.Transaction(ctx, snipTx_); err != nil {
 			return nil, err
 		}
 		return k, nil
 	}
 
-	err := tref.Transaction(ctx, snipTx)
+	err := txRef.Transaction(ctx, snipTx)
 	return k, err
 }
 
 func messageTransaction(ctx context.Context, mr *MessageRequest) (int, error) {
 	msgId := mr.Msg["id"]
-	_, unikRoot, composedIds := utils.ParseMessageId(msgId)
+	_, rootStr, unikRoot, composedIds := utils.ParseMessageId(msgId)
 	db := composedIds[0].ServerShard().RealtimeDB
-	tref := db.NewRef("roots/" + unikRoot + "/connection/upperChat")
-
+	rootRef := db.NewRef("roots/" + unikRoot)
+	txRef := rootRef.Child("connection/upperChat")
 	var k, upperChat int
+
 	chatTx := func(tn rtdb.TransactionNode) (interface{}, error) {
 		if err := tn.Unmarshal(&upperChat); err != nil {
 			k = 0
 		} else {
 			k = upperChat + 1
 		}
-		cid := makeChatId(k)
-		wref := db.NewRef("roots/" + unikRoot + "/chats/" + cid)
-		if err := wref.Set(ctx, mr.Msg); err != nil {
+		chatId := makeChatId(k)
+		fullChatId := chatId + "@" + rootStr
+		mr.Msg["id"] = fullChatId
+		txRef_ := rootRef.Child("chats/" + chatId)
+		chatTx_ := func(tn rtdb.TransactionNode) (interface{}, error) {
+			var m map[string]interface{}
+			tn.Unmarshal(&m)
+			if len(m) == 0 {
+				return mr.Msg, nil
+			} else {
+				return nil, ErrorMessageAlreadyExist
+			}
+		}
+		if err := txRef_.Transaction(ctx, chatTx_); err != nil {
 			return nil, err
 		}
 		return k, nil
 	}
 
-	err := tref.Transaction(ctx, chatTx)
+	err := txRef.Transaction(ctx, chatTx)
 	return k, err
 }
 
@@ -191,7 +213,7 @@ func handlePushErrors(errs []error, msg string) {
 
 func makeChatId(chatNum int) string {
 	// ffffffffffffffff	maxuint64 // 16 long
-	u := strconv.FormatUint(uint64(chatNum), 16)
+	u := strconv.FormatUint(uint64(chatNum), 16) // base16 (hex)
 	padLen := 16 - len(u)
 	return strings.Repeat("0", padLen) + u
 }
@@ -200,7 +222,7 @@ var chatUpdateError error = errors.New("current chat update is more recent")
 
 func reactionTransaction(ctx context.Context, mr *MessageRequest) {
 	userPushKey := mr.Msg["id"][:len(mr.Msg["id"])-1] // simpleId minus '~s'
-	chatNum, unikRoot, composedIds := utils.ParseMessageId(mr.Msg["messageId"])
+	chatNum, _, unikRoot, composedIds := utils.ParseMessageId(mr.Msg["messageId"])
 	db := composedIds[0].ServerShard().RealtimeDB
 	rootRef := db.NewRef("roots/" + unikRoot)
 	cuRef := rootRef.Child("chatUpdates/" + userPushKey)
@@ -225,7 +247,7 @@ func reactionTransaction(ctx context.Context, mr *MessageRequest) {
 func reactionIncrement(ctx context.Context, mr *MessageRequest) {
 	reactionId := mr.Msg["reactionId"]
 	reactorId := mr.Msg["senderId"]
-	chatNum, unikRoot, composedIds := utils.ParseMessageId(mr.Msg["messageId"])
+	chatNum, _, unikRoot, composedIds := utils.ParseMessageId(mr.Msg["messageId"])
 	db := composedIds[0].ServerShard().RealtimeDB
 	rootRef := db.NewRef("roots/" + unikRoot)
 	txRef := rootRef.Child("connection/chatUpdate")
@@ -250,6 +272,10 @@ func reactionIncrement(ctx context.Context, mr *MessageRequest) {
 
 // I think we can have one function for all
 func ProcessMessage(w http.ResponseWriter, r *http.Request) {
+	var k int
+	var err error
+	const retry = 4
+
 	ctx := context.Background()
 
 	var mr MessageRequest
@@ -261,7 +287,12 @@ func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 	} else if len(mr.Msg) > 0 {
 		switch mr.Msg["type"] {
 		case "chat":
-			k, err := messageTransaction(ctx, &mr)
+			for i := 0; i < retry; i++ {
+				k, err = messageTransaction(ctx, &mr)
+				if err == nil || err != ErrorMessageAlreadyExist {
+					break
+				}
+			}
 			fatal(err, "Error doing message transaction")
 			if k == 0 {
 				psh := "m" + mr.Msg["id"]
@@ -270,7 +301,12 @@ func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			break
 		case "snip":
-			k, err := snipTransaction(ctx, &mr)
+			for i := 0; i < retry; i++ {
+				k, err = snipTransaction(ctx, &mr)
+				if err == nil || err != ErrorMessageAlreadyExist {
+					break
+				}
+			}
 			fatal(err, "Error doing snip transaction")
 			if k == 0 {
 				psh := "m" + mr.Msg["id"]

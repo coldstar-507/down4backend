@@ -93,9 +93,16 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func nonFatal(err error, msg string) {
+	if err != nil {
+		log.Printf(msg+": %v\n", err)
+	}
+}
+
 func getNodeMedia(ctx context.Context, id utils.ComposedId) (string, map[string]string, error) {
 	bckt := id.ServerShard().StaticBucket
 	sUrl, err := bckt.SignedURL(id.Unik, server.Client.SignedOpts)
+	nonFatal(err, fmt.Sprintf("could not get signed url for mediaId=%s", id.ToString()))
 
 	obj := bckt.Object(id.Unik)
 	attrs, err := obj.Attrs(ctx)
@@ -107,13 +114,11 @@ func getNodeMedia(ctx context.Context, id utils.ComposedId) (string, map[string]
 }
 
 func getNode(ctx context.Context, idStr string, nc chan *map[string]interface{}) {
-	var (
-		full     map[string]interface{} = make(map[string]interface{}, 3)
-		node     map[string]interface{}
-	)
+	var full map[string]interface{} = make(map[string]interface{}, 3)
 
 	id := utils.ParseComposedId(utils.Tailed(idStr))
 	db := id.ServerShard().RealtimeDB
+	var node map[string]interface{}
 	if err := db.NewRef("roots/"+id.Unik+"/node").Get(ctx, &node); err != nil {
 		nc <- nil
 		return
@@ -123,7 +128,7 @@ func getNode(ctx context.Context, idStr string, nc chan *map[string]interface{})
 
 	mediaIdStr, ok := node["mediaId"].(string)
 	if !ok {
-		log.Printf("could not get node media and link :: mediaID isn't a string")
+		log.Printf("could not get node media and link: mediaId isn't a string")
 		nc <- &full
 		return
 	}
@@ -131,7 +136,7 @@ func getNode(ctx context.Context, idStr string, nc chan *map[string]interface{})
 	mediaId := utils.ParseComposedId(utils.Tailed(mediaIdStr))
 	link, metadata, err := getNodeMedia(ctx, mediaId)
 	if err != nil {
-		log.Printf("could not get node media and link :: %v\n", err)
+		log.Printf("could not get node media and link: %v\n", err)
 		nc <- &full
 		return
 	}
