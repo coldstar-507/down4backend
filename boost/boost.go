@@ -16,8 +16,8 @@ import (
 	"net/http"
 	"strconv"
 
-
 	"cloud.google.com/go/firestore"
+	"github.com/btcsuite/btcd/btcutil/base58"
 	"github.com/coldstar-507/down4backend/bsv"
 	"github.com/coldstar-507/down4backend/messagerequests"
 	"github.com/coldstar-507/down4backend/server"
@@ -252,22 +252,24 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 
 			m := map[string]int{}
 			r := func(m map[string]int, u *user) map[string]int {
-				_, reg, _, _ := utils.ParseID(u.Id)
-				m[reg]++
+				id, _ := utils.ParseSingleRoot(u.Id)
+				m[id.Region]++
 				return m
 
 			}
+			
 			areaMap := utils.Reduce(users[packStart:packEnd], m, r)
 			reg, ishrd := utils.MaxKey(areaMap), rand.Int()%server.N_SHARD
 
 			shrd := server.Client.Shards[reg][ishrd]
 			rbuf := utils.RandomBytes(16)
-			unik := base32.StdEncoding.EncodeToString(rbuf)
-			boostID := utils.MakeID(unik, reg, ishrd)
+			unik := base58.Encode(rbuf)
+			boostId := utils.ComposedId{Unik: unik, Region: reg, Shard: ishrd}
+			boostIdStr := boostId.ToString()
 
 			payload := make(map[string]interface{})
 			utils.CopyMap(br.BoostMessage, payload)
-			payload["id"] = boostID
+			payload["id"] = boostIdStr
 			payload["sats"] = br.PricePerHead
 			payload["packStart"] = packStart
 			payload["packEnd"] = packEnd
@@ -279,12 +281,14 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 			}
 
 			if len(rawMedia) > 0 {
-				munik := base32.StdEncoding.EncodeToString(utils.RandomBytes(16))
-				mid := utils.MakeID(munik, reg, ishrd)
-				obj := shrd.TempBucket.Object(mid)
-				mtdt := make(map[string]string)
+				munik := base58.Encode(utils.RandomBytes(16))
+				// munik := base32.StdEncoding.EncodeToString(utils.RandomBytes(16))
+				cpMid := utils.ComposedId{Unik: munik, Region: reg, Shard: ishrd}
+				midStr := cpMid.ToString() + "m"
+				obj := shrd.TempBucket.Object(midStr)
+				mtdt := make(map[string]string, len(br.Media))
 				utils.CopyMap(br.Media, mtdt)
-				mtdt["id"] = mid
+				mtdt["id"] = midStr
 				wtr := obj.NewWriter(ctx)
 				wtr.Metadata = mtdt
 				wtr.Write(rawMedia)
@@ -296,12 +300,17 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 			}
 
 			for _, usr := range users[j*packSize : packEnd] {
-				u, r, s, _ := utils.ParseID(usr.Id)
-				ushrd := server.Client.Shards[r][s]
-				k := prfx + "%" + boostID
-				pth := "nodes/" + u + "/queues/boost/" + k
-				ref := ushrd.RealtimeDB.NewRef(pth)
-				ref.Set(ctx, "")
+				cp, err := utils.ParseSingleRoot(usr.Id)
+				if err != nil {
+					msg := fmt.Sprintf("invalid user root=%v", usr.Id)
+					utils.NonFatal(err, msg)
+					continue
+				}
+				db := cp.ServerShard().RealtimeDB
+				k := prfx + "%" + boostIdStr
+				pth := "nodes/" + cp.Unik + "/queues/boost/" + k
+				err = db.NewRef(pth).Set(ctx, "")
+
 			}
 			ch <- nil
 		}(i)
@@ -333,28 +342,23 @@ func satsPrefix(sats int) string {
 
 func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
-	fatalErr := func(err error, format string) {
-		if err != nil {
-			log.Fatalf(format, err)
-		}
-	}
 
 	var br boostRequest2
 	err := json.NewDecoder(r.Body).Decode(&br)
-	fatalErr(err, "error decoding boostRequest: %v\n")
+	utils.Fatal(err, "error decoding boostRequest")
 
 	if br.PricePerHead > math.MaxUint32 {
 		log.Fatalf("price per head exceeds maximum amount of 42 bsv: %v\n", br.PricePerHead)
 	}
 
 	txbuf, err := base64.StdEncoding.DecodeString(br.PartialTx)
-	fatalErr(err, "error decoding base64 partial tx: %v\n")
+	utils.Fatal(err, "error decoding base64 partial tx")
 
 	s1, err := base64.StdEncoding.DecodeString(br.S1)
-	fatalErr(err, "error decoding base64 s1: %v\n")
+	utils.Fatal(err, "error decoding base64 s1")
 
 	addr, err := base64.StdEncoding.DecodeString(br.ChangeAddress)
-	fatalErr(err, "error decoding base64 change address: %v\n")
+	utils.Fatal(err, "error decoding base64 change address")
 
 	tx := bsv.TxFromRdr(bytes.NewReader(txbuf))
 	log.Printf("tx pre boost\n%v", tx.Formatted())
@@ -375,7 +379,7 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 	if nOuts == 0 {
 		log.Fatalln("error, haven't found any people to boost")
 	}
-	
+
 	rdyTx := bsv.BoostScript(tx, s1, nOuts, br.PricePerHead, br.InputSats, addr)
 	rawTx := rdyTx.Raw()
 	rawTxHex, txid := hex.EncodeToString(rawTx), bsv.Txid(rawTx)
@@ -388,7 +392,7 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 	// txPayload := map[string]interface{}{"rawTx": rawTxHex}
 	// txPayload := map[string]interface{}{"raw": rawTxHex}
 	rawPayload, err := json.Marshal(txPayload)
-	fatalErr(err, "err marshalling txPayload: %v\n")
+	utils.Fatal(err, "err marshalling txPayload")
 	payloadRdr := bytes.NewReader(rawPayload)
 
 	// const url string = "https://test-api.bitails.io/tx/broadcast"
@@ -402,16 +406,16 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 	// rsp, err := http.DefaultClient.Do(req)
 
 	rsp, err := http.Post(url, "application/json", payloadRdr)
-	fatalErr(err, "error posting tx to miners: %v\n")
+	utils.Fatal(err, "error posting tx to miners")
 	if rsp.StatusCode != 200 {
 		rbuf, err := io.ReadAll(rsp.Body)
-		fatalErr(err, "error reading response buffer: %v\n")
+		utils.Fatal(err, "error reading response buffer")
 		log.Fatalf("error broadcasting tx: %s\n", string(rbuf))
 	}
 
 	var rjson map[string]interface{}
 	err = json.NewDecoder(rsp.Body).Decode(&rjson)
-	fatalErr(err, "error decoding response: %v\n")
+	utils.Fatal(err, "error decoding response")
 	// txid := rjson["txid"].(string)
 	status, ok := rjson["status"].(int)
 	if !ok {
@@ -431,7 +435,7 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 	// change index is -> nOuts + 1 - 1 -> nOuts
 	pushPayload := txidHex + "@" + strconv.FormatInt(int64(nOuts), 10)
 	err = messagerequests.PushData(ctx, br.SenderID, br.DeviceID, pushPayload)
-	fatalErr(err, "error pushing data after boost request: %v\n")
+	utils.Fatal(err, "error pushing data after boost request")
 
 	header, body := "Completed Boost", fmt.Sprintf("Found %v targets", nOuts)
 	err = messagerequests.PushNotification(ctx, br.Token, body, header, "", "")

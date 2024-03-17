@@ -22,14 +22,16 @@ func init() {
 func getFullId(ctx context.Context, unique string, sc chan *string) {
 	ref, err := server.Client.Firestore.Collection("users").Doc(unique).Get(ctx)
 	if err != nil {
-		log.Printf("error: getting doc at user/%s: %v\n", unique, err.Error())
+		msg := fmt.Sprintf("error getting doc at user/%s", unique)
+		utils.NonFatal(err, msg)
 		sc <- nil
 		return
 	}
 
 	fullId, err := ref.DataAt("id")
 	if err != nil {
-		log.Printf("error: decoding userData at user/%s: %v\n", unique, err.Error())
+		msg := fmt.Sprintf("error decoding userData a user/%s", unique)
+		utils.NonFatal(err, msg)
 		sc <- nil
 		return
 	}
@@ -37,8 +39,8 @@ func getFullId(ctx context.Context, unique string, sc chan *string) {
 	if s, ok := fullId.(string); ok {
 		sc <- &s
 	} else {
-		err = fmt.Errorf("error: users/%v/id isn't a string, it's a %T\n", unique, fullId)
-		log.Printf(err.Error())
+		err := fmt.Errorf("id at user/%s isn't a string", unique)
+		utils.NonFatal(err, "error getting string id")
 		sc <- nil
 	}
 }
@@ -46,9 +48,7 @@ func getFullId(ctx context.Context, unique string, sc chan *string) {
 func GetNodes(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	raw, err := io.ReadAll(r.Body)
-	if err != nil {
-		log.Fatalf("error reading request body: %v\n", err)
-	}
+	utils.Fatal(err, "error reading request body")
 
 	usernames := strings.Split(string(raw), " ")
 	sc := make(chan *string, len(usernames))
@@ -93,16 +93,10 @@ func GetNodes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func nonFatal(err error, msg string) {
-	if err != nil {
-		log.Printf(msg+": %v\n", err)
-	}
-}
-
-func getNodeMedia(ctx context.Context, id utils.ComposedId) (string, map[string]string, error) {
+func getNodeMedia(ctx context.Context, id *utils.ComposedId) (string, map[string]string, error) {
 	bckt := id.ServerShard().StaticBucket
 	sUrl, err := bckt.SignedURL(id.Unik, server.Client.SignedOpts)
-	nonFatal(err, fmt.Sprintf("could not get signed url for mediaId=%s", id.ToString()))
+	utils.NonFatal(err, fmt.Sprintf("could not get signed url for mediaId=%s", id.ToString()))
 
 	obj := bckt.Object(id.Unik)
 	attrs, err := obj.Attrs(ctx)
@@ -116,14 +110,25 @@ func getNodeMedia(ctx context.Context, id utils.ComposedId) (string, map[string]
 func getNode(ctx context.Context, idStr string, nc chan *map[string]interface{}) {
 	var full map[string]interface{} = make(map[string]interface{}, 3)
 
-	id := utils.ParseComposedId(utils.Tailed(idStr))
+	cps, err := utils.ParseRoot(idStr)
+	if err != nil {
+		utils.NonFatal(err, "could not parse node idStr")
+		nc <- nil
+		return
+	}
+	if len(cps) != 1 {
+		log.Println("dual root is invalid for getNode")
+		nc <- nil
+		return
+	}
+
+	id := cps[0]
 	db := id.ServerShard().RealtimeDB
 	var node map[string]interface{}
 	if err := db.NewRef("roots/"+id.Unik+"/node").Get(ctx, &node); err != nil {
 		nc <- nil
 		return
 	}
-
 	full["node"] = &node
 
 	mediaIdStr, ok := node["mediaId"].(string)
@@ -133,15 +138,20 @@ func getNode(ctx context.Context, idStr string, nc chan *map[string]interface{})
 		return
 	}
 
-	mediaId := utils.ParseComposedId(utils.Tailed(mediaIdStr))
+	mediaId, err := utils.ParseMediaId(mediaIdStr)
+	if err != nil {
+		utils.NonFatal(err, "could not parse mediaId in getNode")
+		nc <- &full
+	}
+
 	link, metadata, err := getNodeMedia(ctx, mediaId)
 	if err != nil {
 		log.Printf("could not get node media and link: %v\n", err)
 		nc <- &full
 		return
 	}
+
 	full["metadata"] = &metadata
 	full["link"] = &link
-
 	nc <- &full
 }

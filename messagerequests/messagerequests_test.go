@@ -3,37 +3,120 @@ package messagerequests
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"net/http/httptest"
+	"strconv"
+	// "sync"
 	"testing"
+
+	"github.com/coldstar-507/down4backend/utils"
 )
 
-func TestMessageRequests(t *testing.T) {
-	mq := &mq{
-		Mts: []mt{{
-			UserID:    "comfy~america~0",
-			DeviceID:  "H0iCjoPoZwkXVRAVW61JWw==",
-			Token:     "dG4vEEjESBC0uor4k1kd-1:APA91bEiOqFZ7sxK6oQz43FDo12UNoobtykMJovYiGTMgxSReCaIlQtc515_T2ORZxH1AFqooFOQuDYc8DCB5hkZLHJz9RfdZvws68KD1avDCQq8gfG85J1YhLwh1z2vbFuM9iwsNnXo",
+func TestMakeChatNum(t *testing.T) {
+	m64 := strconv.FormatUint(math.MaxUint64, 10)
+	m32 := strconv.FormatUint(math.MaxUint32, 10)
+	t.Logf("m64=%s, len=%d\n", m64, len(m64))
+	t.Logf("m32=%s, len=%d\n", m32, len(m32))
+}
+
+func TestProcessMessage(t *testing.T) {
+	mqs := []*MessageRequest{{
+		Targets: []MessageTarget{{
+			UserId:    "hashirama-america-0r",
+			DeviceId:  "HKobPYpVoR1RxfXJt2CsJ64JuCX",
+			Token:     "e7blxHf6SHKTcjc-mF6La1:APA91bEmqrp1EOVvibwbdBf9QJ4fLQJzGApKbigTqrsiYPR7KZZMPW0MEUoWQeuqOG9xQOBqswww8uamb-wE5yMGD-mR_A7h9CgHJuNvVc71NA-tdexF-r97FAf1UW0kiTin2-10ouHB",
 			ShowNotif: true,
-			DoPush:    false,
+			DoPush:    true,
 		}, {
-			UserID:    "hashirama~america~0",
-			DeviceID:  "XkRBcZDVb5872ZSKiYfsFw==",
-			Token:     "fd-p8CbjQHuCwgM4LHktZi:APA91bH3ybHbor6p72PkSEwrPrO8RaMWJpfnznadscy-JhTki4uz7_Ic03kp2ytGqMrMi_0-QFJCXULh3fOUZzrqPdFCUZz_JPJovoe_VIZQ_k7wCslH2zp61NmyxF6Bgez2FIK_Symf",
+			UserId:    "scammer-america-0r",
+			DeviceId:  "2VvkskVWSteL5duLxkyFmtBZXnHT",
+			Token:     "frZb09J2Sdm_kTbV8BCCrL:APA91bEJ4XVOglMtOV7-x2qgVJWhQGQmk3uIl6v0vtlak0XTpPiACS9LznYno--76tZTCvsnBjc0mYLDrzfhGCzMwN7daBiG0OHYZ7mDXze7PPbBuEacbe4kI-GZhSMKIeijERW68pof",
 			ShowNotif: true,
-			DoPush:    false,
+			DoPush:    true,
 		}},
-		Push:     "m!-Nc5ttBMeCAYH01DtkMB~america~1",
-		Header:   "Mathematics",
-		Body:     "Hashirama Senju: Piece of shit.",
-		SenderID: "hashirama~america~0",
-		RootID:   "-Nc5r8EPCuqp5M5s-GDl~america~1",
+		Msg: map[string]string{
+			"id":        "ABCDEFG@scammer-america-0r^hashirama-america-0rc",
+			"type":      "chat",
+			"senderId":  "scammer-america-0r",
+			"tag":       "YmwogGuHRYW",
+			"txt":       "It's all fucking based",
+			"timestamp": strconv.FormatInt(utils.UnixMilli(), 10),
+		},
+		Push:   "",
+		Header: "Scammer",
+		Body:   "I will tell you right away: you can't talk before me",
+		Sender: "scammer-america-0r",
+		Root:   "scammer-america-0r^hashirama-america-0r",
+	},
+		{
+			Targets: []MessageTarget{{
+				UserId:    "hashirama-america-0r",
+				DeviceId:  "HKobPYpVoR1RxfXJt2CsJ64JuCX",
+				Token:     "e7blxHf6SHKTcjc-mF6La1:APA91bEmqrp1EOVvibwbdBf9QJ4fLQJzGApKbigTqrsiYPR7KZZMPW0MEUoWQeuqOG9xQOBqswww8uamb-wE5yMGD-mR_A7h9CgHJuNvVc71NA-tdexF-r97FAf1UW0kiTin2-10ouHB",
+				ShowNotif: true,
+				DoPush:    true,
+			}, {
+				UserId:    "scammer-america-0r",
+				DeviceId:  "2VvkskVWSteL5duLxkyFmtBZXnHT",
+				Token:     "frZb09J2Sdm_kTbV8BCCrL:APA91bEJ4XVOglMtOV7-x2qgVJWhQGQmk3uIl6v0vtlak0XTpPiACS9LznYno--76tZTCvsnBjc0mYLDrzfhGCzMwN7daBiG0OHYZ7mDXze7PPbBuEacbe4kI-GZhSMKIeijERW68pof",
+				ShowNotif: true,
+				DoPush:    true,
+			}},
+			Msg: map[string]string{
+				"id":        "jlkasdf@scammer-america-0r^hashirama-america-0rc",
+				"type":      "chat",
+				"senderId":  "hashirama-america-0r",
+				"tag":       "YmwogGuHRYW",
+				"txt":       "Listening to Flavour Trip ^_^",
+				"timestamp": strconv.FormatInt(utils.UnixMilli(), 10),
+			},
+			Push:   "",
+			Header: "Hashirama",
+			Body:   "Degrowth is a scam",
+			Sender: "scammer-america-0r",
+			Root:   "scammer-america-0r^hashirama-america-0r",
+		},
+		{
+			Targets: []MessageTarget{{
+				UserId:    "hashirama-america-0r",
+				DeviceId:  "HKobPYpVoR1RxfXJt2CsJ64JuCX",
+				Token:     "e7blxHf6SHKTcjc-mF6La1:APA91bEmqrp1EOVvibwbdBf9QJ4fLQJzGApKbigTqrsiYPR7KZZMPW0MEUoWQeuqOG9xQOBqswww8uamb-wE5yMGD-mR_A7h9CgHJuNvVc71NA-tdexF-r97FAf1UW0kiTin2-10ouHB",
+				ShowNotif: true,
+				DoPush:    true,
+			}, {
+				UserId:    "scammer-america-0r",
+				DeviceId:  "2VvkskVWSteL5duLxkyFmtBZXnHT",
+				Token:     "frZb09J2Sdm_kTbV8BCCrL:APA91bEJ4XVOglMtOV7-x2qgVJWhQGQmk3uIl6v0vtlak0XTpPiACS9LznYno--76tZTCvsnBjc0mYLDrzfhGCzMwN7daBiG0OHYZ7mDXze7PPbBuEacbe4kI-GZhSMKIeijERW68pof",
+				ShowNotif: true,
+				DoPush:    true,
+			}},
+			Msg: map[string]string{
+				"id":        "jlkasdf@scammer-america-0r^hashirama-america-0rc",
+				"type":      "chat",
+				"senderId":  "hashirama-america-0r",
+				"tag":       "YmwogGuHRYW",
+				"txt":       "CRAIG WRIGHT IS MY HERO",
+				"timestamp": strconv.FormatInt(utils.UnixMilli(), 10),
+			},
+			Push:   "",
+			Header: "Hashirama",
+			Body:   "There are actually 0 studies proving this",
+			Sender: "scammer-america-0r",
+			Root:   "scammer-america-0r^hashirama-america-0r",
+		},
 	}
 
-	js, _ := json.Marshal(mq)
-
-	r := httptest.NewRequest("POST", "/", bytes.NewReader(js))
-	w := httptest.NewRecorder()
-
-	ProcessMessage(w, r)
-
+	// var wg sync.WaitGroup
+	for _, mq := range mqs {
+		//wg.Add(1)
+		//go func(mq_ *MessageRequest) {
+		//defer wg.Done()
+		js, _ := json.Marshal(mq)
+		r := httptest.NewRequest("POST", "/", bytes.NewReader(js))
+		w := httptest.NewRecorder()
+		ProcessMessage(w, r)
+		//}(mq)
+	}
+	//	wg.Wait()
+	t.Log("We Are DONE")
 }

@@ -39,13 +39,13 @@ func init() {
 	server.ServerInit(ctx)
 }
 
-func PushData(ctx context.Context, userID, deviceID, payload string) error {
-	uni, reg, shrd, err := utils.Decompose(userID)
+func PushData(ctx context.Context, userId, deviceId, payload string) error {
+	id, err := utils.ParseSingleRoot(userId)
 	if err != nil {
 		return err
 	}
-	srv := server.Client.Shards[reg][shrd].RealtimeDB
-	ref := srv.NewRef("nodes/" + uni + "/queues/" + deviceID)
+	db := id.ServerShard().RealtimeDB
+	ref := db.NewRef("roots/" + id.Unik + "/queues/" + deviceId)
 	if _, err = ref.Push(ctx, payload); err != nil {
 		return err
 	}
@@ -71,14 +71,14 @@ func (mr *MessageRequest) makeNotifications() []*messaging.Message {
 	return msgs
 }
 
-func PushNotification(ctx context.Context, token, body, header, rootID, senderID string) error {
+func PushNotification(ctx context.Context, token, body, header, rootId, senderId string) error {
 	m := &messaging.Message{
 		Token: token,
 		Data: map[string]string{
 			"b": body,
 			"h": header,
-			"r": rootID,
-			"s": senderID,
+			"r": rootId,
+			"s": senderId,
 		},
 	}
 	_, err := server.Client.Messager.Send(ctx, m)
@@ -88,18 +88,6 @@ func PushNotification(ctx context.Context, token, body, header, rootID, senderID
 func prettyPrint(i interface{}) string {
 	s, _ := json.MarshalIndent(i, "", "\t")
 	return string(s)
-}
-
-func fatal(err error, errMsg string) {
-	if err != nil {
-		log.Fatalf(errMsg+": %v\n", err)
-	}
-}
-
-func nonFatal(err error, errMsg string) {
-	if err != nil {
-		log.Printf(errMsg+": %v\n", err)
-	}
 }
 
 func pushRequest(ctx context.Context, targets []MessageTarget, push string) []error {
@@ -126,22 +114,33 @@ func pushRequest(ctx context.Context, targets []MessageTarget, push string) []er
 
 var ErrorMessageAlreadyExist = errors.New("message already exists")
 
-func snipTransaction(ctx context.Context, mr *MessageRequest) (int, error) {
+func snipTransaction(ctx context.Context, mr *MessageRequest) (int, string, error) {
 	msgId := mr.Msg["id"]
-	_, rootStr, unikRoot, composedIds := utils.ParseMessageId(msgId)
+	_, rootStr, unikRoot, composedIds, err := utils.ParseMessageId(msgId)
+	if err != nil {
+		return 0, "", err
+	}
 	db := composedIds[0].ServerShard().RealtimeDB
 	rootRef := db.NewRef("roots/" + unikRoot)
 	txRef := rootRef.Child("connection/upperSnip")
-	var k, upperSnip int
+	var k int
+	var upperSnip interface{}
+	var newMsgId string
+
 	snipTx := func(tn rtdb.TransactionNode) (interface{}, error) {
 		if err := tn.Unmarshal(&upperSnip); err != nil {
-			k = 0
-		} else {
-			k = upperSnip + 1
+			return nil, err
 		}
+
+		if value, ok := upperSnip.(float64); ok {
+			k = int(value) + 1
+		} else {
+			k = 0
+		}
+
 		snipId := makeChatId(k)
-		fullChatId := snipId + "@" + rootStr
-		mr.Msg["id"] = fullChatId
+		newMsgId = snipId + "@" + rootStr + "c"
+		mr.Msg["id"] = newMsgId
 		txRef_ := rootRef.Child("snips/" + snipId)
 		snipTx_ := func(tn rtdb.TransactionNode) (interface{}, error) {
 			var m map[string]interface{}
@@ -158,79 +157,99 @@ func snipTransaction(ctx context.Context, mr *MessageRequest) (int, error) {
 		return k, nil
 	}
 
-	err := txRef.Transaction(ctx, snipTx)
-	return k, err
+	err = txRef.Transaction(ctx, snipTx)
+	return k, newMsgId, err
 }
 
-func messageTransaction(ctx context.Context, mr *MessageRequest) (int, error) {
+func messageTransaction(ctx context.Context, mr *MessageRequest) (int, string, error) {
 	msgId := mr.Msg["id"]
-	_, rootStr, unikRoot, composedIds := utils.ParseMessageId(msgId)
+	_, rootStr, unikRoot, composedIds, err := utils.ParseMessageId(msgId)
+	if err != nil {
+		return 0, "", err
+	}
 	db := composedIds[0].ServerShard().RealtimeDB
 	rootRef := db.NewRef("roots/" + unikRoot)
 	txRef := rootRef.Child("connection/upperChat")
-	var k, upperChat int
-
+	var k int
+	var upperChat interface{}
+	var newMsgId string
 	chatTx := func(tn rtdb.TransactionNode) (interface{}, error) {
 		if err := tn.Unmarshal(&upperChat); err != nil {
-			k = 0
-		} else {
-			k = upperChat + 1
+			return nil, err
 		}
+
+		if value, ok := upperChat.(float64); ok {
+			k = int(value) + 1
+		} else {
+			k = 0
+		}
+
 		chatId := makeChatId(k)
-		fullChatId := chatId + "@" + rootStr
-		mr.Msg["id"] = fullChatId
+		newMsgId = chatId + "@" + rootStr + "c"
+		msg_ := utils.CopyMap_(mr.Msg)
+		msg_["id"] = newMsgId
 		txRef_ := rootRef.Child("chats/" + chatId)
 		chatTx_ := func(tn rtdb.TransactionNode) (interface{}, error) {
 			var m map[string]interface{}
 			tn.Unmarshal(&m)
 			if len(m) == 0 {
-				return mr.Msg, nil
+				return msg_, nil
 			} else {
 				return nil, ErrorMessageAlreadyExist
 			}
 		}
+
 		if err := txRef_.Transaction(ctx, chatTx_); err != nil {
 			return nil, err
 		}
 		return k, nil
 	}
 
-	err := txRef.Transaction(ctx, chatTx)
-	return k, err
+	err = txRef.Transaction(ctx, chatTx)
+	return k, newMsgId, err
 }
 
 var pushError error = errors.New("all push failed")
 
 func handlePushErrors(errs []error, msg string) {
 	if utils.Every(errs, func(err error) bool { return err != nil }) {
-		fatal(pushError, msg)
+		utils.Fatal(pushError, msg)
 	} else {
 		for _, err := range errs {
-			nonFatal(err, "Error making a push")
+			utils.NonFatal(err, "Error making a push")
 		}
 	}
 }
 
 func makeChatId(chatNum int) string {
-	// ffffffffffffffff	maxuint64 // 16 long
-	u := strconv.FormatUint(uint64(chatNum), 16) // base16 (hex)
-	padLen := 16 - len(u)
+	// a 13 max length, we have max num of 9,999,999,999,999
+	// which is 9 trillion+ max chats for a single root
+	u := strconv.FormatUint(uint64(chatNum), 10) // base16 (hex)
+	padLen := 13 - len(u)
 	return strings.Repeat("0", padLen) + u
 }
+
+// func makeChatId_(chatNum int) string {
+// 	// ffffffffffffffff	maxuint64 // 16 long
+// 	u := strconv.FormatUint(uint64(chatNum), 16) // base16 (hex)
+// 	padLen := 16 - len(u)
+// 	return u + strings.Repeat("0", padLen)
+// }
 
 var chatUpdateError error = errors.New("current chat update is more recent")
 
 func reactionTransaction(ctx context.Context, mr *MessageRequest) {
-	userPushKey := mr.Msg["id"][:len(mr.Msg["id"])-1] // simpleId minus '~s'
-	chatNum, _, unikRoot, composedIds := utils.ParseMessageId(mr.Msg["messageId"])
+	userPushKey, err := utils.Tailed(mr.Msg["id"])
+	utils.Fatal(err, "Error tailing mr.Msg['id'] in reactionTransaction")
+	chatNum, _, unikRoot, composedIds, err := utils.ParseMessageId(mr.Msg["messageId"])
+	utils.Fatal(err, "Error Parsing mr.Msg['messageId'] in reactionTransaction")
 	db := composedIds[0].ServerShard().RealtimeDB
 	rootRef := db.NewRef("roots/" + unikRoot)
 	cuRef := rootRef.Child("chatUpdates/" + userPushKey)
 	chatRef := rootRef.Child("chats/" + chatNum + "/reactions/" + userPushKey)
 	txRef := rootRef.Child("connection/chatUpdate")
-	// delete(mr.Msg, "messageId")
-	fatal(chatRef.Set(ctx, mr.Msg), "Error setting reaction")
-	fatal(cuRef.Set(ctx, "r "+chatNum+" "+userPushKey), "Error pushing reaction chat update")
+	utils.Fatal(chatRef.Set(ctx, mr.Msg), "Error setting reaction")
+	utils.Fatal(cuRef.Set(ctx, "r "+chatNum+" "+userPushKey), "Error pushing reaction chat update")
 
 	txFun := func(tn rtdb.TransactionNode) (interface{}, error) {
 		var curChatUpdate string
@@ -247,16 +266,17 @@ func reactionTransaction(ctx context.Context, mr *MessageRequest) {
 func reactionIncrement(ctx context.Context, mr *MessageRequest) {
 	reactionId := mr.Msg["reactionId"]
 	reactorId := mr.Msg["senderId"]
-	chatNum, _, unikRoot, composedIds := utils.ParseMessageId(mr.Msg["messageId"])
+	chatNum, _, unikRoot, composedIds, err := utils.ParseMessageId(mr.Msg["messageId"])
+	utils.Fatal(err, "Error parsing mr.Msg['messageId'] in reactionIncrement")
 	db := composedIds[0].ServerShard().RealtimeDB
 	rootRef := db.NewRef("roots/" + unikRoot)
 	txRef := rootRef.Child("connection/chatUpdate")
 	chatRef := rootRef.Child("chats/" + chatNum + "/reactions/" + reactionId + "/reactors")
 	pushKey := utils.MakePushKey()
 	cuRef := rootRef.Child("chatUpdates/" + pushKey)
-	fatal(chatRef.Child(reactorId).Set(ctx, ""), "Error adding reactor to chat")
+	utils.Fatal(chatRef.Child(reactorId).Set(ctx, ""), "Error adding reactor to chat")
 	pushUpdate := "i " + reactorId + " " + chatNum + " " + reactionId
-	fatal(cuRef.Set(ctx, pushUpdate), "Error pushing increment chat udpate")
+	utils.Fatal(cuRef.Set(ctx, pushUpdate), "Error pushing increment chat udpate")
 	txChatUpdate := func(tn rtdb.TransactionNode) (interface{}, error) {
 		var curPush string
 		tn.Unmarshal(&curPush)
@@ -274,12 +294,13 @@ func reactionIncrement(ctx context.Context, mr *MessageRequest) {
 func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 	var k int
 	var err error
+	var msgid string
 	const retry = 4
 
 	ctx := context.Background()
 
 	var mr MessageRequest
-	fatal(json.NewDecoder(r.Body).Decode(&mr), "Error decoding request")
+	utils.Fatal(json.NewDecoder(r.Body).Decode(&mr), "Error decoding request")
 
 	if len(mr.Push) > 0 {
 		errs := pushRequest(ctx, mr.Targets, mr.Push)
@@ -288,28 +309,29 @@ func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 		switch mr.Msg["type"] {
 		case "chat":
 			for i := 0; i < retry; i++ {
-				k, err = messageTransaction(ctx, &mr)
+				log.Printf("Attempt #%v for %v\n", i, mr.Msg["id"])
+				k, msgid, err = messageTransaction(ctx, &mr)
 				if err == nil || err != ErrorMessageAlreadyExist {
 					break
 				}
 			}
-			fatal(err, "Error doing message transaction")
+			utils.Fatal(err, "Error doing message transaction")
 			if k == 0 {
-				psh := "m" + mr.Msg["id"]
+				psh := "m" + msgid
 				errs := pushRequest(ctx, mr.Targets, psh)
 				handlePushErrors(errs, "Error pushing chat")
 			}
 			break
 		case "snip":
 			for i := 0; i < retry; i++ {
-				k, err = snipTransaction(ctx, &mr)
+				k, msgid, err = snipTransaction(ctx, &mr)
 				if err == nil || err != ErrorMessageAlreadyExist {
 					break
 				}
 			}
-			fatal(err, "Error doing snip transaction")
+			utils.Fatal(err, "Error doing snip transaction")
 			if k == 0 {
-				psh := "m" + mr.Msg["id"]
+				psh := "m" + msgid
 				errs := pushRequest(ctx, mr.Targets, psh)
 				handlePushErrors(errs, "Error pushing snip")
 			}
@@ -326,9 +348,9 @@ func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 	if len(mr.Header) > 0 {
 		ntfs := mr.makeNotifications()
 		br, err := server.Client.Messager.SendEach(ctx, ntfs)
-		nonFatal(err, "Error sending notifications")
+		utils.NonFatal(err, "Error sending notifications")
 		for _, x := range br.Responses {
-			nonFatal(x.Error, "Error sending a notification")
+			utils.NonFatal(x.Error, "Error sending a notification")
 		}
 	}
 }
