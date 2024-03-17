@@ -1,6 +1,6 @@
 module github.com/coldstar-507/down4backend/utils
 
-go 1.22.1
+go 1.21.5
 
 require (
 	github.com/btcsuite/btcd/btcutil v1.1.5
@@ -42,5 +42,3 @@ require (
 	google.golang.org/grpc v1.59.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 )
-
-replace github.com/coldstar-507/down4backend/server => ../server

@@ -22,7 +22,6 @@ import (
 	"github.com/coldstar-507/down4backend/messagerequests"
 	"github.com/coldstar-507/down4backend/server"
 	"github.com/coldstar-507/down4backend/utils"
-
 	"github.com/mmcloughlin/geohash"
 )
 

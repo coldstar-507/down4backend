@@ -1,6 +1,6 @@
 module github.com/coldstar-507/down4backend/messagerequests
 
-go 1.22.1
+go 1.21.5
 
 require (
 	firebase.google.com/go/v4 v4.13.0
