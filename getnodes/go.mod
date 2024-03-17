@@ -1,6 +1,6 @@
 module github.com/coldstar-507/down4backend/getnodes
 
-go 1.22
+go 1.22.1
 
 require (
 	github.com/coldstar-507/down4backend/server v0.0.0-20240309035545-c4cbddf1e3eb
