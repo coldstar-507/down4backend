@@ -43,12 +43,8 @@ github.com/btcsuite/winsvc v1.0.0/go.mod h1:jsenWakMcC0zFBFurPLEAyrnc/teJEM1O46f
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGXZJjfX53e64911xZQV5JYwmTeXPW+k8Sc=
-github.com/coldstar-507/down4backend/server v0.0.0-20240309035545-c4cbddf1e3eb h1:b3t2JBfxtz3/DHBOogzm3WvST6r9p+BVUKk0o+5pcrM=
-github.com/coldstar-507/down4backend/server v0.0.0-20240309035545-c4cbddf1e3eb/go.mod h1:9yvjjLsqNPrOtE60+kkFTGXRW1J1wlDIjyl1QZNTf88=
 github.com/coldstar-507/down4backend/server v0.0.0-20240311162526-6259130a4d7f h1:ZrQWy/48xsPL9Q+tNauGOV+RJCk8qIxtOLarOyYHpLM=
 github.com/coldstar-507/down4backend/server v0.0.0-20240311162526-6259130a4d7f/go.mod h1:9yvjjLsqNPrOtE60+kkFTGXRW1J1wlDIjyl1QZNTf88=
-github.com/coldstar-507/down4backend/utils v0.0.0-20240309035545-c4cbddf1e3eb h1:uzq4Nhw/FS7gG5vnlkUtnuxEICrXLLeEQ8epuMRzXds=
-github.com/coldstar-507/down4backend/utils v0.0.0-20240309035545-c4cbddf1e3eb/go.mod h1:C5+zxo5USVTfWyL0SaofMeYjk79ZusYIY7zQSfzZ4T0=
 github.com/coldstar-507/down4backend/utils v0.0.0-20240311162526-6259130a4d7f h1:utvK7wZ4AiIRJau87o59OyE9/x+3OIx9Ua0/0D75IFw=
 github.com/coldstar-507/down4backend/utils v0.0.0-20240311162526-6259130a4d7f/go.mod h1:C5+zxo5USVTfWyL0SaofMeYjk79ZusYIY7zQSfzZ4T0=
 github.com/davecgh/go-spew v0.0.0-20171005155431-ecdeabc65495/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

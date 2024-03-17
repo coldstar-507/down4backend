@@ -1,6 +1,6 @@
 module github.com/coldstar-507/down4backend/server
 
-go 1.21
+go 1.22.1
 
 require (
 	cloud.google.com/go/firestore v1.14.0

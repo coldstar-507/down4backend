@@ -1,16 +1,6 @@
 module github.com/coldstar-507/down4backend/getnodes
 
-go 1.21
-
-// require (
-// 	github.com/coldstar-507/down4backend/server v0.0.0-20230802001408-3ac1140cc064
-// 	github.com/coldstar-507/down4backend/utils v0.0.0-20230802001408-3ac1140cc064
-// )
-
-// replace (
-// 	github.com/coldstar-507/down4backend/server v0.0.0-20230802001408-3ac1140cc064 => /home/scott/dev/down4/backend/server
-// 	github.com/coldstar-507/down4backend/utils v0.0.0-20230802001408-3ac1140cc064 => /home/scott/dev/down4/backend/utils
-// )
+go 1.22
 
 require (
 	github.com/coldstar-507/down4backend/server v0.0.0-20240309035545-c4cbddf1e3eb
