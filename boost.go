@@ -1,4 +1,4 @@
-package boost
+package backend
 
 import (
 	"bytes"
@@ -18,10 +18,6 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"github.com/btcsuite/btcd/btcutil/base58"
-	"github.com/coldstar-507/down4backend/bsv"
-	"github.com/coldstar-507/down4backend/messagerequests"
-	"github.com/coldstar-507/down4backend/server"
-	"github.com/coldstar-507/down4backend/utils"
 	"github.com/mmcloughlin/geohash"
 )
 
@@ -37,7 +33,7 @@ const precision = 4
 
 func init() {
 	ctx := context.Background()
-	server.ServerInit(ctx)
+	ServerInit(ctx)
 }
 
 func geoDist(ll1, ll2 latlon) float64 {
@@ -122,7 +118,7 @@ func validHash3(a area, hash string) bool {
 
 	twoClosest := closest2(a.Perim, boxCenter)
 	for _, b := range bounds {
-		valid := utils.Any(twoClosest, func(ll latlon) bool {
+		valid := Any(twoClosest, func(ll latlon) bool {
 			return geoDist(b, a.Center) < ll.RefDist
 		})
 		if valid {
@@ -144,7 +140,7 @@ func calcLayers2(a area) [][]string {
 		for _, e := range l {
 			nbs := geohash.Neighbors(e)
 			for _, nb := range nbs {
-				if !utils.Contains(nb, flat) && validHash3(a, nb) {
+				if !Contains(nb, flat) && validHash3(a, nb) {
 					flat = append(flat, nb)
 					curLayer = append(curLayer, nb)
 				}
@@ -251,23 +247,23 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 
 			m := map[string]int{}
 			r := func(m map[string]int, u *user) map[string]int {
-				id, _ := utils.ParseSingleRoot(u.Id)
+				id, _ := ParseSingleRoot(u.Id)
 				m[id.Region]++
 				return m
 
 			}
 			
-			areaMap := utils.Reduce(users[packStart:packEnd], m, r)
-			reg, ishrd := utils.MaxKey(areaMap), rand.Int()%server.N_SHARD
+			areaMap := Reduce(users[packStart:packEnd], m, r)
+			reg, ishrd := MaxKey(areaMap), rand.Int()%N_SHARD
 
-			shrd := server.Client.Shards[reg][ishrd]
-			rbuf := utils.RandomBytes(16)
+			shrd := Client.Shards[reg][ishrd]
+			rbuf := RandomBytes(16)
 			unik := base58.Encode(rbuf)
-			boostId := utils.ComposedId{Unik: unik, Region: reg, Shard: ishrd}
+			boostId := ComposedId{Unik: unik, Region: reg, Shard: ishrd}
 			boostIdStr := boostId.ToString()
 
 			payload := make(map[string]interface{})
-			utils.CopyMap(br.BoostMessage, payload)
+			CopyMap(br.BoostMessage, payload)
 			payload["id"] = boostIdStr
 			payload["sats"] = br.PricePerHead
 			payload["packStart"] = packStart
@@ -280,13 +276,13 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 			}
 
 			if len(rawMedia) > 0 {
-				munik := base58.Encode(utils.RandomBytes(16))
+				munik := base58.Encode(RandomBytes(16))
 				// munik := base32.StdEncoding.EncodeToString(utils.RandomBytes(16))
-				cpMid := utils.ComposedId{Unik: munik, Region: reg, Shard: ishrd}
+				cpMid := ComposedId{Unik: munik, Region: reg, Shard: ishrd}
 				midStr := cpMid.ToString() + "m"
 				obj := shrd.TempBucket.Object(midStr)
 				mtdt := make(map[string]string, len(br.Media))
-				utils.CopyMap(br.Media, mtdt)
+				CopyMap(br.Media, mtdt)
 				mtdt["id"] = midStr
 				wtr := obj.NewWriter(ctx)
 				wtr.Metadata = mtdt
@@ -299,10 +295,10 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 			}
 
 			for _, usr := range users[j*packSize : packEnd] {
-				cp, err := utils.ParseSingleRoot(usr.Id)
+				cp, err := ParseSingleRoot(usr.Id)
 				if err != nil {
 					msg := fmt.Sprintf("invalid user root=%v", usr.Id)
-					utils.NonFatal(err, msg)
+					NonFatal(err, msg)
 					continue
 				}
 				db := cp.ServerShard().RealtimeDB
@@ -344,22 +340,22 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 
 	var br boostRequest2
 	err := json.NewDecoder(r.Body).Decode(&br)
-	utils.Fatal(err, "error decoding boostRequest")
+	Fatal(err, "error decoding boostRequest")
 
 	if br.PricePerHead > math.MaxUint32 {
 		log.Fatalf("price per head exceeds maximum amount of 42 bsv: %v\n", br.PricePerHead)
 	}
 
 	txbuf, err := base64.StdEncoding.DecodeString(br.PartialTx)
-	utils.Fatal(err, "error decoding base64 partial tx")
+	Fatal(err, "error decoding base64 partial tx")
 
 	s1, err := base64.StdEncoding.DecodeString(br.S1)
-	utils.Fatal(err, "error decoding base64 s1")
+	Fatal(err, "error decoding base64 s1")
 
 	addr, err := base64.StdEncoding.DecodeString(br.ChangeAddress)
-	utils.Fatal(err, "error decoding base64 change address")
+	Fatal(err, "error decoding base64 change address")
 
-	tx := bsv.TxFromRdr(bytes.NewReader(txbuf))
+	tx := TxFromRdr(bytes.NewReader(txbuf))
 	log.Printf("tx pre boost\n%v", tx.Formatted())
 
 	lim := br.Limit
@@ -379,9 +375,9 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 		log.Fatalln("error, haven't found any people to boost")
 	}
 
-	rdyTx := bsv.BoostScript(tx, s1, nOuts, br.PricePerHead, br.InputSats, addr)
+	rdyTx := BoostScript(tx, s1, nOuts, br.PricePerHead, br.InputSats, addr)
 	rawTx := rdyTx.Raw()
-	rawTxHex, txid := hex.EncodeToString(rawTx), bsv.Txid(rawTx)
+	rawTxHex, txid := hex.EncodeToString(rawTx), Txid(rawTx)
 	txidHex := hex.EncodeToString(txid)
 	log.Printf("ready tx\n%v", rdyTx.Formatted())
 	// rawTxHex := hex.EncodeToString(rdyTx.Raw())
@@ -391,7 +387,7 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 	// txPayload := map[string]interface{}{"rawTx": rawTxHex}
 	// txPayload := map[string]interface{}{"raw": rawTxHex}
 	rawPayload, err := json.Marshal(txPayload)
-	utils.Fatal(err, "err marshalling txPayload")
+	Fatal(err, "err marshalling txPayload")
 	payloadRdr := bytes.NewReader(rawPayload)
 
 	// const url string = "https://test-api.bitails.io/tx/broadcast"
@@ -405,16 +401,16 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 	// rsp, err := http.DefaultClient.Do(req)
 
 	rsp, err := http.Post(url, "application/json", payloadRdr)
-	utils.Fatal(err, "error posting tx to miners")
+	Fatal(err, "error posting tx to miners")
 	if rsp.StatusCode != 200 {
 		rbuf, err := io.ReadAll(rsp.Body)
-		utils.Fatal(err, "error reading response buffer")
+		Fatal(err, "error reading response buffer")
 		log.Fatalf("error broadcasting tx: %s\n", string(rbuf))
 	}
 
 	var rjson map[string]interface{}
 	err = json.NewDecoder(rsp.Body).Decode(&rjson)
-	utils.Fatal(err, "error decoding response")
+	Fatal(err, "error decoding response")
 	// txid := rjson["txid"].(string)
 	status, ok := rjson["status"].(int)
 	if !ok {
@@ -433,11 +429,11 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 
 	// change index is -> nOuts + 1 - 1 -> nOuts
 	pushPayload := txidHex + "@" + strconv.FormatInt(int64(nOuts), 10)
-	err = messagerequests.PushData(ctx, br.SenderID, br.DeviceID, pushPayload)
-	utils.Fatal(err, "error pushing data after boost request")
+	err = PushData(ctx, br.SenderID, br.DeviceID, pushPayload)
+	Fatal(err, "error pushing data after boost request")
 
 	header, body := "Completed Boost", fmt.Sprintf("Found %v targets", nOuts)
-	err = messagerequests.PushNotification(ctx, br.Token, body, header, "", "")
+	err = PushNotification(ctx, br.Token, body, header, "", "")
 	if err != nil {
 		log.Printf("not fatal, could not push notification to receipient: %v\n", err)
 	}
@@ -452,7 +448,7 @@ func scanArea(ctx context.Context, b *boostRequest2, a area, lim int) ([]*user, 
 
 	for _, layer := range layers {
 		la, li := layer, curlim
-		q := b.buildQuery(server.Client.Firestore, la, li)
+		q := b.buildQuery(Client.Firestore, la, li)
 		it := q.Documents(ctx)
 		for {
 			var usr user
@@ -468,7 +464,7 @@ func scanArea(ctx context.Context, b *boostRequest2, a area, lim int) ([]*user, 
 			cl2 := closest2(a.Perim, latlon{Lat: usr.Lat, Lon: usr.Lon})
 			usrDist := geoDist(latlon{Lat: usr.Lat, Lon: usr.Lon}, a.Center)
 
-			valid := utils.Any(cl2, func(ll latlon) bool {
+			valid := Any(cl2, func(ll latlon) bool {
 				return usrDist <= ll.RefDist
 			})
 

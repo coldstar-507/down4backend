@@ -1,4 +1,4 @@
-package messagerequests
+package backend
 
 import (
 	"context"
@@ -12,8 +12,6 @@ import (
 
 	rtdb "firebase.google.com/go/v4/db"
 	"firebase.google.com/go/v4/messaging"
-	"github.com/coldstar-507/down4backend/server"
-	"github.com/coldstar-507/down4backend/utils"
 )
 
 type MessageRequest struct {
@@ -36,11 +34,11 @@ type MessageTarget struct {
 
 func init() {
 	ctx := context.Background()
-	server.ServerInit(ctx)
+	ServerInit(ctx)
 }
 
 func PushData(ctx context.Context, userId, deviceId, payload string) error {
-	id, err := utils.ParseSingleRoot(userId)
+	id, err := ParseSingleRoot(userId)
 	if err != nil {
 		return err
 	}
@@ -81,7 +79,7 @@ func PushNotification(ctx context.Context, token, body, header, rootId, senderId
 			"s": senderId,
 		},
 	}
-	_, err := server.Client.Messager.Send(ctx, m)
+	_, err := Client.Messager.Send(ctx, m)
 	return err
 }
 
@@ -116,7 +114,7 @@ var ErrorMessageAlreadyExist = errors.New("message already exists")
 
 func snipTransaction(ctx context.Context, mr *MessageRequest) (int, string, error) {
 	msgId := mr.Msg["id"]
-	_, rootStr, unikRoot, composedIds, err := utils.ParseMessageId(msgId)
+	_, rootStr, unikRoot, composedIds, err := ParseMessageId(msgId)
 	if err != nil {
 		return 0, "", err
 	}
@@ -163,7 +161,7 @@ func snipTransaction(ctx context.Context, mr *MessageRequest) (int, string, erro
 
 func messageTransaction(ctx context.Context, mr *MessageRequest) (int, string, error) {
 	msgId := mr.Msg["id"]
-	_, rootStr, unikRoot, composedIds, err := utils.ParseMessageId(msgId)
+	_, rootStr, unikRoot, composedIds, err := ParseMessageId(msgId)
 	if err != nil {
 		return 0, "", err
 	}
@@ -186,7 +184,7 @@ func messageTransaction(ctx context.Context, mr *MessageRequest) (int, string, e
 
 		chatId := makeChatId(k)
 		newMsgId = chatId + "@" + rootStr + "c"
-		msg_ := utils.CopyMap_(mr.Msg)
+		msg_ := CopyMap_(mr.Msg)
 		msg_["id"] = newMsgId
 		txRef_ := rootRef.Child("chats/" + chatId)
 		chatTx_ := func(tn rtdb.TransactionNode) (interface{}, error) {
@@ -212,11 +210,11 @@ func messageTransaction(ctx context.Context, mr *MessageRequest) (int, string, e
 var pushError error = errors.New("all push failed")
 
 func handlePushErrors(errs []error, msg string) {
-	if utils.Every(errs, func(err error) bool { return err != nil }) {
-		utils.Fatal(pushError, msg)
+	if Every(errs, func(err error) bool { return err != nil }) {
+		Fatal(pushError, msg)
 	} else {
 		for _, err := range errs {
-			utils.NonFatal(err, "Error making a push")
+			NonFatal(err, "Error making a push")
 		}
 	}
 }
@@ -239,17 +237,17 @@ func makeChatId(chatNum int) string {
 var chatUpdateError error = errors.New("current chat update is more recent")
 
 func reactionTransaction(ctx context.Context, mr *MessageRequest) {
-	userPushKey, err := utils.Tailed(mr.Msg["id"])
-	utils.Fatal(err, "Error tailing mr.Msg['id'] in reactionTransaction")
-	chatNum, _, unikRoot, composedIds, err := utils.ParseMessageId(mr.Msg["messageId"])
-	utils.Fatal(err, "Error Parsing mr.Msg['messageId'] in reactionTransaction")
+	userPushKey, err := Tailed(mr.Msg["id"])
+	Fatal(err, "Error tailing mr.Msg['id'] in reactionTransaction")
+	chatNum, _, unikRoot, composedIds, err := ParseMessageId(mr.Msg["messageId"])
+	Fatal(err, "Error Parsing mr.Msg['messageId'] in reactionTransaction")
 	db := composedIds[0].ServerShard().RealtimeDB
 	rootRef := db.NewRef("roots/" + unikRoot)
 	cuRef := rootRef.Child("chatUpdates/" + userPushKey)
 	chatRef := rootRef.Child("chats/" + chatNum + "/reactions/" + userPushKey)
 	txRef := rootRef.Child("connection/chatUpdate")
-	utils.Fatal(chatRef.Set(ctx, mr.Msg), "Error setting reaction")
-	utils.Fatal(cuRef.Set(ctx, "r "+chatNum+" "+userPushKey), "Error pushing reaction chat update")
+	Fatal(chatRef.Set(ctx, mr.Msg), "Error setting reaction")
+	Fatal(cuRef.Set(ctx, "r "+chatNum+" "+userPushKey), "Error pushing reaction chat update")
 
 	txFun := func(tn rtdb.TransactionNode) (interface{}, error) {
 		var curChatUpdate string
@@ -266,21 +264,21 @@ func reactionTransaction(ctx context.Context, mr *MessageRequest) {
 func reactionIncrement(ctx context.Context, mr *MessageRequest) {
 	reactionId := mr.Msg["reactionId"]
 	reactorId := mr.Msg["senderId"]
-	chatNum, _, unikRoot, composedIds, err := utils.ParseMessageId(mr.Msg["messageId"])
-	utils.Fatal(err, "Error parsing mr.Msg['messageId'] in reactionIncrement")
+	chatNum, _, unikRoot, composedIds, err := ParseMessageId(mr.Msg["messageId"])
+	Fatal(err, "Error parsing mr.Msg['messageId'] in reactionIncrement")
 	db := composedIds[0].ServerShard().RealtimeDB
 	rootRef := db.NewRef("roots/" + unikRoot)
 	txRef := rootRef.Child("connection/chatUpdate")
 	chatRef := rootRef.Child("chats/" + chatNum + "/reactions/" + reactionId + "/reactors")
-	pushKey := utils.MakePushKey()
+	pushKey := MakePushKey()
 	cuRef := rootRef.Child("chatUpdates/" + pushKey)
-	utils.Fatal(chatRef.Child(reactorId).Set(ctx, ""), "Error adding reactor to chat")
+	Fatal(chatRef.Child(reactorId).Set(ctx, ""), "Error adding reactor to chat")
 	pushUpdate := "i " + reactorId + " " + chatNum + " " + reactionId
-	utils.Fatal(cuRef.Set(ctx, pushUpdate), "Error pushing increment chat udpate")
+	Fatal(cuRef.Set(ctx, pushUpdate), "Error pushing increment chat udpate")
 	txChatUpdate := func(tn rtdb.TransactionNode) (interface{}, error) {
 		var curPush string
 		tn.Unmarshal(&curPush)
-		pushKey := utils.MakePushKey()
+		pushKey := MakePushKey()
 		if pushKey > curPush {
 			return pushKey, nil
 		} else {
@@ -300,7 +298,7 @@ func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
 	var mr MessageRequest
-	utils.Fatal(json.NewDecoder(r.Body).Decode(&mr), "Error decoding request")
+	Fatal(json.NewDecoder(r.Body).Decode(&mr), "Error decoding request")
 
 	if len(mr.Push) > 0 {
 		errs := pushRequest(ctx, mr.Targets, mr.Push)
@@ -315,7 +313,7 @@ func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
-			utils.Fatal(err, "Error doing message transaction")
+			Fatal(err, "Error doing message transaction")
 			if k == 0 {
 				psh := "m" + msgid
 				errs := pushRequest(ctx, mr.Targets, psh)
@@ -329,7 +327,7 @@ func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
-			utils.Fatal(err, "Error doing snip transaction")
+			Fatal(err, "Error doing snip transaction")
 			if k == 0 {
 				psh := "m" + msgid
 				errs := pushRequest(ctx, mr.Targets, psh)
@@ -347,10 +345,10 @@ func ProcessMessage(w http.ResponseWriter, r *http.Request) {
 
 	if len(mr.Header) > 0 {
 		ntfs := mr.makeNotifications()
-		br, err := server.Client.Messager.SendEach(ctx, ntfs)
-		utils.NonFatal(err, "Error sending notifications")
+		br, err := Client.Messager.SendEach(ctx, ntfs)
+		NonFatal(err, "Error sending notifications")
 		for _, x := range br.Responses {
-			utils.NonFatal(x.Error, "Error sending a notification")
+			NonFatal(x.Error, "Error sending a notification")
 		}
 	}
 }

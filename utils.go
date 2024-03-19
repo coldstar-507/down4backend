@@ -1,4 +1,4 @@
-package utils
+package backend
 
 import (
 	"crypto/rand"
@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	
 	"github.com/btcsuite/btcd/btcutil/base58"
-	"github.com/coldstar-507/down4backend/server"
+
 )
 
 func Fatal(err error, errMsg string) {
@@ -136,8 +136,8 @@ func ParseMessageId(s string) (string, string, string, []ComposedId, error) {
 	return unik, rootStr, UnikRoot(composedIds), composedIds, nil
 }
 
-func (c *ComposedId) ServerShard() server.ServerShard {
-	return server.Client.Shards[c.Region][c.Shard]
+func (c *ComposedId) ServerShard() ServerShard {
+	return Client.Shards[c.Region][c.Shard]
 }
 
 func UnixMilli() int64 {

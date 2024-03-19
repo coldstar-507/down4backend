@@ -1,4 +1,4 @@
-module github.com/coldstar-507/down4backend/server
+module github.com/coldstar-507/backend
 
 go 1.21.5
 
@@ -6,6 +6,8 @@ require (
 	cloud.google.com/go/firestore v1.15.0
 	cloud.google.com/go/storage v1.39.1
 	firebase.google.com/go/v4 v4.13.0
+	github.com/btcsuite/btcd/btcutil v1.1.5
+	github.com/mmcloughlin/geohash v0.10.0
 	google.golang.org/api v0.170.0
 )
 
