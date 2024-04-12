@@ -107,12 +107,7 @@ func getNodeMedia(ctx context.Context, id *ComposedId) (string, map[string]strin
 func getNode(ctx context.Context, idStr string, nc chan *map[string]interface{}) {
 	var full map[string]interface{} = make(map[string]interface{}, 3)
 
-	cps, err := ParseRoot(idStr)
-	if err != nil {
-		NonFatal(err, "could not parse node idStr")
-		nc <- nil
-		return
-	}
+	cps := ParseRoot(idStr)
 	if len(cps) != 1 {
 		log.Println("dual root is invalid for getNode")
 		nc <- nil
@@ -135,11 +130,7 @@ func getNode(ctx context.Context, idStr string, nc chan *map[string]interface{})
 		return
 	}
 
-	mediaId, err := ParseMediaId(mediaIdStr)
-	if err != nil {
-		NonFatal(err, "could not parse mediaId in getNode")
-		nc <- &full
-	}
+	mediaId := ParseMediaId(mediaIdStr)
 
 	link, metadata, err := getNodeMedia(ctx, mediaId)
 	if err != nil {

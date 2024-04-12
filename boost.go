@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -247,12 +248,12 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 
 			m := map[string]int{}
 			r := func(m map[string]int, u *user) map[string]int {
-				id, _ := ParseSingleRoot(u.Id)
+				id := ParseRoot(u.Id)[0]
 				m[id.Region]++
 				return m
 
 			}
-			
+
 			areaMap := Reduce(users[packStart:packEnd], m, r)
 			reg, ishrd := MaxKey(areaMap), rand.Int()%N_SHARD
 
@@ -277,7 +278,6 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 
 			if len(rawMedia) > 0 {
 				munik := base58.Encode(RandomBytes(16))
-				// munik := base32.StdEncoding.EncodeToString(utils.RandomBytes(16))
 				cpMid := ComposedId{Unik: munik, Region: reg, Shard: ishrd}
 				midStr := cpMid.ToString() + "m"
 				obj := shrd.TempBucket.Object(midStr)
@@ -295,7 +295,7 @@ func writeBoosts(ctx context.Context, users []*user, br *boostRequest2) ([]error
 			}
 
 			for _, usr := range users[j*packSize : packEnd] {
-				cp, err := ParseSingleRoot(usr.Id)
+				cp := ParseRoot(usr.Id)[0]
 				if err != nil {
 					msg := fmt.Sprintf("invalid user root=%v", usr.Id)
 					NonFatal(err, msg)
@@ -429,8 +429,10 @@ func HandleBoostRequest(w http.ResponseWriter, r *http.Request) {
 
 	// change index is -> nOuts + 1 - 1 -> nOuts
 	pushPayload := txidHex + "@" + strconv.FormatInt(int64(nOuts), 10)
-	err = PushData(ctx, br.SenderID, br.DeviceID, pushPayload)
-	Fatal(err, "error pushing data after boost request")
+	rp := PushData(ctx, br.SenderID, br.DeviceID, pushPayload)
+	if rp != nil  {
+		Fatal(errors.New("error pushing data after boost request"), "")
+	}
 
 	header, body := "Completed Boost", fmt.Sprintf("Found %v targets", nOuts)
 	err = PushNotification(ctx, br.Token, body, header, "", "")

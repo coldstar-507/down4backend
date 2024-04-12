@@ -3,15 +3,14 @@ package backend
 import (
 	"crypto/rand"
 	"encoding/binary"
-	"errors"
-	"fmt"
+	//	"errors"
+	//	"fmt"
 	"log"
 	"strconv"
 	"strings"
 	"time"
-	
-	"github.com/btcsuite/btcd/btcutil/base58"
 
+	"github.com/btcsuite/btcd/btcutil/base58"
 )
 
 func Fatal(err error, errMsg string) {
@@ -32,108 +31,53 @@ type ComposedId struct {
 	Unik   string
 }
 
-func Tailed(s string) (string, error) {
-	if len(s) == 0 {
-		return "", errors.New("empty string parameter in Tailed")
-	}
-	return s[:len(s)-1], nil
+// mediaId // unik-region-shard-m // 3 hyphen
+// mediaDimId // unik-region-shard-w-h-squared-m // 6 hyphen
+// we only care of parse the ComposedId part
+func ParseMediaId(s string) *ComposedId {
+	vals := strings.Split(s, "-")
+	return makeCp(vals[0], vals[1], vals[2])
 }
 
-func ParseComposedId(s string) (*ComposedId, error) {
-	if unik, reg, shrd, err := Decompose(s); err != nil {
-		return nil, err
-	} else {
-		return &ComposedId{Unik: unik, Region: reg, Shard: shrd}, nil
-	}
-
+func makeCp(u, r, s string) *ComposedId {
+	shard, _ := strconv.Atoi(s)
+	return &ComposedId{Unik: u, Region: r, Shard: shard}
 }
 
-func ParseMediaId(s string) (*ComposedId, error) {
-	if len(s) == 0 {
-		return nil, errors.New("empty string parameter for ParseMediaId")
+// Root // unik-region-shard-r (4)
+// DualRoot // unik-region-shard-unik-shard-r (6)
+func ParseRoot(s string) []*ComposedId {
+	roots := make([]*ComposedId, 0, 2)
+	vals := strings.Split(s, "-")
+	roots = append(roots, makeCp(vals[0], vals[1], vals[2]))
+	if len(vals) == 6 {
+		roots = append(roots, makeCp(vals[3], vals[4], vals[5]))
 	}
-	vals := strings.Split(s, "@")
-	if len(vals) == 3 {
-		if cp, err := ParseComposedId(vals[0]); err != nil {
-			return nil, err
-		} else {
-			return cp, nil
-		}
-	} else {
-		s_, err := Tailed(s)
-		if err != nil {
-			return nil, err
-		}
-		if cp, err := ParseComposedId(s_); err != nil {
-			return nil, err
-		} else {
-			return cp, nil
-		}
-	}
+	return roots
 }
 
-func ParseSingleRoot(r string) (*ComposedId, error) {
-	cps, err := ParseRoot(r)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(cps) != 1 {
-		return nil, errors.New("more than one root parsed in ParseSingleRoot")
-	}
-
-	return &cps[0], nil
+func RootOfComposedIds(cpIds []*ComposedId) string {
+	return strings.Join(Map(cpIds, func(cp *ComposedId) string {
+		return cp.ToString()
+	}), "-") + "-r"
 }
 
-func ParseRoot(r string) ([]ComposedId, error) {
-	sp := strings.Split(r, "^")
-	roots := make([]ComposedId, 0, 2)
-	for _, x := range sp {
-		t, err := Tailed(x)
-		if err != nil {
-			continue
-		}
-		u, r, s, err := Decompose(t)
-		if err != nil {
-			continue
-		}
-		roots = append(roots, ComposedId{Unik: u, Region: r, Shard: s})
-	}
-	if len(roots) == 0 {
-		return nil, fmt.Errorf("invalid parameter=%v for ParseRoot", r)
-	}
-	return roots, nil
+func UnikRoot(ids []*ComposedId) string {
+	return strings.Join(Map(ids, func(rt *ComposedId) string {
+		return rt.Unik
+	}), "-")
 }
 
-func RootOfComposedIds(cpIds []ComposedId) string {
-	return strings.Join(Map(cpIds, func(cp ComposedId) string {
-		return cp.ToString() + "r"
-	}), "^")
-}
-
-func UnikRoot(ids []ComposedId) string {
-	return strings.Join(Map(ids, func(rt ComposedId) string { return rt.Unik }), "^")
-}
-
-func ParseMessageId(s string) (string, string, string, []ComposedId, error) {
-	t, err := Tailed(s)
-	if err != nil {
-		return "", "", "", nil, err
+// chatId // unik-unik-region-shard-r-c (6)
+// snipId // unik-unik-region-shard-unik-region-shard-r-c (9)
+func ParseMessageId(s string) (string, string, string, []*ComposedId) {
+	roots := make([]*ComposedId, 0, 2)
+	vals := strings.Split(s, "-")
+	roots = append(roots, makeCp(vals[1], vals[2], vals[3]))
+	if len(vals) == 9 {
+		roots = append(roots, makeCp(vals[4], vals[5], vals[6]))
 	}
-
-	vals := strings.Split(t, "@")
-	if len(vals) != 2 {
-		err := fmt.Errorf("string parameter=%s for ParseMessageId invalid", s)
-		return "", "", "", nil, err
-	}
-
-	unik, rootStr := vals[0], vals[1]
-	composedIds, err := ParseRoot(rootStr)
-	if err != nil {
-		return "", "", "", nil, err
-	}
-	
-	return unik, rootStr, UnikRoot(composedIds), composedIds, nil
+	return vals[0], RootOfComposedIds(roots), UnikRoot(roots), roots
 }
 
 func (c *ComposedId) ServerShard() ServerShard {
@@ -179,6 +123,14 @@ func CopyMap_[K comparable, J any](src map[K]J) map[K]J {
 	return dst
 }
 
+func CopyMap__[K comparable, J any](src map[K]J) map[K]interface{} {
+	dst := make(map[K]interface{}, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
 func MaxKey[T comparable](m map[T]int) string {
 	mr := func(a [2]interface{}, k T, v int) [2]interface{} {
 		if v >= a[1].(int) {
@@ -203,25 +155,6 @@ func RandomBytes(n int) []byte {
 func (c *ComposedId) ToString() string {
 	istr := strconv.Itoa(c.Shard)
 	return c.Unik + "-" + c.Region + "-" + istr
-}
-
-// Returns unique, region, iShard
-func Decompose(id string) (string, string, int, error) {
-	if len(id) == 0 {
-		return "", "", 0, errors.New("emptry string parameter in Decompose")
-	}
-	vals := strings.Split(id, "-")
-	if len(vals) != 3 {
-		return "", "", 0, fmt.Errorf("id isn't a composedID: %v", id)
-	}
-
-	var uni, reg, shrd string = vals[0], vals[1], vals[2]
-	iShrd, err := strconv.Atoi(shrd)
-	if err != nil {
-		return "", "", 0, err
-	}
-
-	return uni, reg, iShrd, nil
 }
 
 func Reduce[T any, E any](l []T, acc E, combine func(a E, b T) E) E {
@@ -282,6 +215,15 @@ func Any[T any](l []T, f func(T) bool) bool {
 func Contains[T comparable](e T, a []T) bool {
 	for _, x := range a {
 		if x == e {
+			return true
+		}
+	}
+	return false
+}
+
+func ContainsWhere[T any, K any](e T, a []K, f func(T, K) bool) bool {
+	for _, x := range a {
+		if f(e, x) {
 			return true
 		}
 	}
